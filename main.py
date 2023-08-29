@@ -93,7 +93,10 @@ if __name__ == '__main__':
             # plot the results
             X = X.cpu().detach().numpy()
             outputs = outputs.cpu().detach().numpy()
-
+            # Denormalise
+            X = X*(max_x - min_x) + min_x
+            outputs = outputs*(max_y - min_y) + min_y
+            
             fig = plt.figure(figsize=(15, 5))
             # Plot for U
             ax1 = fig.add_subplot(131)

@@ -41,20 +41,21 @@ class simpleNet(torch.nn.Module):
         x = self.layer3(x)
         return x
     
-def load_data(csv_path):
+def load_data(csv_path,test_size=0.2, random_state=42, drop_hub= True):
     df = pd.read_csv(csv_path)
     # Drop the specified rows
-    df = df.drop(df[(np.sqrt(df['x']**2 + df['y']**2) <= 2*178.3)].index)
+    if drop_hub:
+        df = df.drop(df[(np.sqrt(df['x']**2 + df['y']**2) <= 1*178.3)].index)
     X = df[['x', 'y']].values
     y = df[['U', 'V', 'P']].values
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
     min_x = X_train.min(axis=0)   
     max_x = X_train.max(axis=0)
     min_y = y_train.min(axis=0)
     max_y = y_train.max(axis=0)
     return X_train, X_test, y_train, y_test, min_x, max_x, min_y, max_y
 
-def plot(X, outputs):
+def plot(X, outputs, y, fig_prefix=""):
     fig = plt.figure(figsize=(15, 5))
     # Plot for U
     ax1 = fig.add_subplot(131)
@@ -84,23 +85,86 @@ def plot(X, outputs):
     cbar3.set_label('P values')
     # Adjust layout
     plt.tight_layout()
-    plt.savefig("Figures/2d_cart_NN.pdf")
+    plt.savefig(f"Figures/{fig_prefix}_2d_cart_NN.pdf")
+    plt.show()
+
+    # plot the actual values
+    fig = plt.figure(figsize=(15, 5))
+    # Plot for U
+    ax1 = fig.add_subplot(131)
+    sc1 = ax1.scatter(X[:, 0], X[:, 1], c=y[:, 0], cmap='viridis')
+    ax1.set_title('U')
+    ax1.set_xlabel('x')
+    ax1.set_ylabel('y')
+    cbar1 = fig.colorbar(sc1, ax=ax1)
+    cbar1.set_label('U values')
+
+    # Plot for V
+    ax2 = fig.add_subplot(132)  
+    sc2 = ax2.scatter(X[:, 0], X[:, 1], c=y[:, 1], cmap='plasma')
+    ax2.set_title('V')
+    ax2.set_xlabel('x')
+    ax2.set_ylabel('y')
+    cbar2 = fig.colorbar(sc2, ax=ax2)
+    cbar2.set_label('V values')
+
+    # Plot for P
+    ax3 = fig.add_subplot(133)
+    sc3 = ax3.scatter(X[:, 0], X[:, 1], c=y[:, 2], cmap='inferno')
+    ax3.set_title('P')
+    ax3.set_xlabel('x')
+    ax3.set_ylabel('y')
+    cbar3 = fig.colorbar(sc3, ax=ax3)
+    cbar3.set_label('P values')
+    # Adjust layout
+    plt.tight_layout()
+    plt.savefig(f"Figures/{fig_prefix}_2d_cart_actual.pdf")
     plt.show()
 
 
-if __name__ == '__main__':
-    csv_path = 'Data/2d_cart.csv'
-    learning_rate = 0.001
-    num_epochs = 100
-    batch_size = 64 
-    X_train, X_test, y_train, y_test, min_x, max_x, min_y, max_y = load_data(csv_path)
+    # plot error
+    error = np.abs(y - outputs)
+    fig = plt.figure(figsize=(15, 5))
+    # Plot for U
+    ax1 = fig.add_subplot(131)
+    sc1 = ax1.scatter(X[:, 0], X[:, 1], c=error[:, 0], cmap='viridis')
+    ax1.set_title('U')
+    ax1.set_xlabel('x')
+    ax1.set_ylabel('y')
+    cbar1 = fig.colorbar(sc1, ax=ax1)
+    cbar1.set_label('U values')
+
+    # Plot for V
+    ax2 = fig.add_subplot(132)
+    sc2 = ax2.scatter(X[:, 0], X[:, 1], c=error[:, 1], cmap='plasma')
+    ax2.set_title('V')
+    ax2.set_xlabel('x')
+    ax2.set_ylabel('y')
+    cbar2 = fig.colorbar(sc2, ax=ax2)
+    cbar2.set_label('V values')
+
+    # Plot for P
+    ax3 = fig.add_subplot(133)
+    sc3 = ax3.scatter(X[:, 0], X[:, 1], c=error[:, 2], cmap='inferno')
+    ax3.set_title('P')
+    ax3.set_xlabel('x')
+    ax3.set_ylabel('y')
+    cbar3 = fig.colorbar(sc3, ax=ax3)
+    cbar3.set_label('P values')
+    # Adjust layout
+    plt.tight_layout()
+    plt.savefig(f"Figures/{fig_prefix}_2d_cart_error.pdf")
+    plt.show()
+
+def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub, fig_prefix, network = simpleNet):
+    X_train, X_test, y_train, y_test, min_x, max_x, min_y, max_y = load_data(csv_path,test_size=test_size, drop_hub=drop_hub)
     # Create the dataset and dataloader
     train_dataset = two_dim_dataset(X_train, y_train, min_x, max_x, min_y, max_y)
     test_dataset = two_dim_dataset(X_test, y_test, min_x, max_x, min_y, max_y)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
     test_loader = DataLoader(dataset=test_dataset, num_workers=0, batch_size=len(test_dataset))
     # Define the model
-    model = simpleNet().to(device)
+    model = network().to(device)
     # Define the loss function and optimizer
     criterion = torch.nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -127,10 +191,22 @@ if __name__ == '__main__':
             # plot the results
             X = X.cpu().detach().numpy()
             outputs = outputs.cpu().detach().numpy()
+            y = y.cpu().detach().numpy()
             # Denormalise
             X = X*(max_x - min_x) + min_x
             outputs = outputs*(max_y - min_y) + min_y
-            plot(X, outputs)
+            y = y*(max_y - min_y) + min_y
+            plot(X, outputs, y, fig_prefix)
+
+if __name__ == '__main__':
+    csv_path = 'Data/2d_cart.csv'
+    learning_rate = 0.001
+    num_epochs = 1000
+    batch_size = 64 
+    test_size = 0.99
+    drop_hub = True
+    fig_prefix = "simplenet"
+    main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub, fig_prefix)
 
 
 

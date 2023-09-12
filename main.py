@@ -54,6 +54,40 @@ def load_data(csv_path):
     max_y = y_train.max(axis=0)
     return X_train, X_test, y_train, y_test, min_x, max_x, min_y, max_y
 
+def plot(X, outputs):
+    fig = plt.figure(figsize=(15, 5))
+    # Plot for U
+    ax1 = fig.add_subplot(131)
+    sc1 = ax1.scatter(X[:, 0], X[:, 1], c=outputs[:, 0], cmap='viridis')
+    ax1.set_title('U')
+    ax1.set_xlabel('x')
+    ax1.set_ylabel('y')
+    cbar1 = fig.colorbar(sc1, ax=ax1)
+    cbar1.set_label('U values')
+
+    # Plot for V
+    ax2 = fig.add_subplot(132)
+    sc2 = ax2.scatter(X[:, 0], X[:, 1], c=outputs[:, 1], cmap='plasma')
+    ax2.set_title('V')
+    ax2.set_xlabel('x')
+    ax2.set_ylabel('y')
+    cbar2 = fig.colorbar(sc2, ax=ax2)
+    cbar2.set_label('V values')
+
+    # Plot for P
+    ax3 = fig.add_subplot(133)
+    sc3 = ax3.scatter(X[:, 0], X[:, 1], c=outputs[:, 2], cmap='inferno')
+    ax3.set_title('P')
+    ax3.set_xlabel('x')
+    ax3.set_ylabel('y')
+    cbar3 = fig.colorbar(sc3, ax=ax3)
+    cbar3.set_label('P values')
+    # Adjust layout
+    plt.tight_layout()
+    plt.savefig("Figures/2d_cart_NN.pdf")
+    plt.show()
+
+
 if __name__ == '__main__':
     csv_path = 'Data/2d_cart.csv'
     learning_rate = 0.001
@@ -96,38 +130,7 @@ if __name__ == '__main__':
             # Denormalise
             X = X*(max_x - min_x) + min_x
             outputs = outputs*(max_y - min_y) + min_y
-            
-            fig = plt.figure(figsize=(15, 5))
-            # Plot for U
-            ax1 = fig.add_subplot(131)
-            sc1 = ax1.scatter(X[:, 0], X[:, 1], c=outputs[:, 0], cmap='viridis')
-            ax1.set_title('U')
-            ax1.set_xlabel('x')
-            ax1.set_ylabel('y')
-            cbar1 = fig.colorbar(sc1, ax=ax1)
-            cbar1.set_label('U values')
-
-            # Plot for V
-            ax2 = fig.add_subplot(132)
-            sc2 = ax2.scatter(X[:, 0], X[:, 1], c=outputs[:, 1], cmap='plasma')
-            ax2.set_title('V')
-            ax2.set_xlabel('x')
-            ax2.set_ylabel('y')
-            cbar2 = fig.colorbar(sc2, ax=ax2)
-            cbar2.set_label('V values')
-
-            # Plot for P
-            ax3 = fig.add_subplot(133)
-            sc3 = ax3.scatter(X[:, 0], X[:, 1], c=outputs[:, 2], cmap='inferno')
-            ax3.set_title('P')
-            ax3.set_xlabel('x')
-            ax3.set_ylabel('y')
-            cbar3 = fig.colorbar(sc3, ax=ax3)
-            cbar3.set_label('P values')
-            # Adjust layout
-            plt.tight_layout()
-            plt.savefig("Figures/2d_cart_NN.pdf")
-            plt.show()
+            plot(X, outputs)
 
 
 

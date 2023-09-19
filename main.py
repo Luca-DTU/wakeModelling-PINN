@@ -2,6 +2,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import pandas as pd
+import seaborn as sns
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -156,6 +157,45 @@ def plot(X, outputs, y, fig_prefix=""):
     plt.savefig(f"Figures/{fig_prefix}_2d_cart_error.pdf")
     plt.show()
 
+
+def plot_heatmaps(X, outputs, y, fig_prefix=""):
+
+    def plot_single_heatmap(x, y, values, ax, cmap, cbar_label):
+        df = pd.DataFrame.from_dict({'x': x, 'y': y, 'values': values})
+        pivoted = df.pivot("y", "x", "values")
+        sns.heatmap(pivoted, ax=ax, cmap=cmap, cbar_kws={'label': cbar_label})
+        ax.invert_yaxis()
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_xlabel('x')
+        ax.set_ylabel('y')
+
+    def plot_all(title, data, file_suffix):
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
+        
+        # Plot U
+        plot_single_heatmap(X[:, 0], X[:, 1], data[:, 0], ax1, 'jet', 'U values')
+        ax1.set_title('U')
+        
+        # Plot V
+        plot_single_heatmap(X[:, 0], X[:, 1], data[:, 1], ax2, 'jet', 'V values')
+        ax2.set_title('V')
+        
+        # Plot P
+        plot_single_heatmap(X[:, 0], X[:, 1], data[:, 2], ax3, 'jet', 'P values')
+        ax3.set_title('P')
+
+        # Adjust layout and save
+        plt.tight_layout()
+        plt.suptitle(title, y=1.05)
+        plt.savefig(f"Figures/{fig_prefix}_2d_cart_{file_suffix}.pdf")
+        plt.show()
+
+    # Plot everything
+    plot_all("Predicted", outputs, "NN")
+    plot_all("Actual", y, "actual")
+    plot_all("Error", np.abs(y - outputs), "error")
+
 def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub, fig_prefix, network = simpleNet):
     X_train, X_test, y_train, y_test, min_x, max_x, min_y, max_y = load_data(csv_path,test_size=test_size, drop_hub=drop_hub)
     # Create the dataset and dataloader
@@ -196,7 +236,7 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub, f
             X = X*(max_x - min_x) + min_x
             outputs = outputs*(max_y - min_y) + min_y
             y = y*(max_y - min_y) + min_y
-            plot(X, outputs, y, fig_prefix)
+            plot_heatmaps(X, outputs, y, fig_prefix)
 
 if __name__ == '__main__':
     csv_path = 'Data/2d_cart.csv'

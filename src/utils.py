@@ -5,7 +5,9 @@ import pandas as pd
 import seaborn as sns
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+import torch.nn as nn
+
+
 class two_dim_dataset(Dataset):
     def __init__(self, X, y, min_x, max_x, min_y, max_y):
         self.X = X
@@ -25,23 +27,7 @@ class two_dim_dataset(Dataset):
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
     
-# Define the model
-class simpleNet(torch.nn.Module):
-    def __init__(self):
-        super(simpleNet, self).__init__()
-        self.layer1 = torch.nn.Linear(2, 64)
-        self.layer2 = torch.nn.Linear(64, 64)
-        self.layer3 = torch.nn.Linear(64, 3)
-        self.relu = torch.nn.ReLU()
 
-    def forward(self, x):
-        x = self.layer1(x)
-        x = self.relu(x)
-        x = self.layer2(x)
-        x = self.relu(x)
-        x = self.layer3(x)
-        return x
-    
 def load_data(csv_path,test_size=0.2, random_state=42, drop_hub= True):
     df = pd.read_csv(csv_path)
     # Drop the specified rows
@@ -196,58 +182,26 @@ def plot_heatmaps(X, outputs, y, fig_prefix=""):
     plot_all("Actual", y, "actual")
     plot_all("Error", np.abs(y - outputs), "error")
 
-def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub, fig_prefix, network = simpleNet):
-    X_train, X_test, y_train, y_test, min_x, max_x, min_y, max_y = load_data(csv_path,test_size=test_size, drop_hub=drop_hub)
-    # Create the dataset and dataloader
-    train_dataset = two_dim_dataset(X_train, y_train, min_x, max_x, min_y, max_y)
-    test_dataset = two_dim_dataset(X_test, y_test, min_x, max_x, min_y, max_y)
-    train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
-    test_loader = DataLoader(dataset=test_dataset, num_workers=0, batch_size=len(test_dataset))
-    # Define the model
-    model = network().to(device)
-    # Define the loss function and optimizer
-    criterion = torch.nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    # Train the model
-    for epoch in range(num_epochs):
-        for batch_X, batch_y in train_loader:
-            batch_X = batch_X.to(device)
-            batch_y = batch_y.to(device)
-            optimizer.zero_grad()
-            outputs = model(batch_X)
-            loss = criterion(outputs, batch_y)
-            loss.backward()
-            optimizer.step()
-        print('Epoch: {}, Loss: {:.4f}'.format(epoch+1, loss.item()))
-    # Test the model
-    model.eval()
-    with torch.no_grad():
-        for X, y in test_loader:
-            X = X.to(device)
-            y = y.to(device)
-            outputs = model(X)
-            loss = criterion(outputs, y)
-            print('Test loss: {:.4f}'.format(loss.item()))
-            # plot the results
-            X = X.cpu().detach().numpy()
-            outputs = outputs.cpu().detach().numpy()
-            y = y.cpu().detach().numpy()
-            # Denormalise
-            X = X*(max_x - min_x) + min_x
-            outputs = outputs*(max_y - min_y) + min_y
-            y = y*(max_y - min_y) + min_y
-            plot_heatmaps(X, outputs, y, fig_prefix)
 
-if __name__ == '__main__':
-    csv_path = 'Data/2d_cart.csv'
-    learning_rate = 0.001
-    num_epochs = 1000
-    batch_size = 64 
-    test_size = 0.99
-    drop_hub = True
-    fig_prefix = "simplenet"
-    main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub, fig_prefix)
+def physics_informed_loss(xy, net):
+    # AUTOGRAD VERSION.
 
+    xy.requires_grad = True
+    uv = net(xy)
 
+    # Compute the Jacobian matrix of uv with respect to xy.
+    J = torch.autograd.functional.jacobian(net, xy)
+    J_u = J[:, 0, :, :]  # Jacobian of u with respect to xy
+    J_v = J[:, 1, :, :]  # Jacobian of v with respect to xy
 
+    # Compute the derivatives of u and v with respect to x and y, respectively.
+    dux_dx = torch.sum(J_u * torch.unsqueeze(torch.ones_like(xy[:,0]), 1), dim=1) # ! These two functions sums columns i.e. this only works because gradients between observations are all zero in this case (only non-zero values in the diagonal). I think that is always the case with PINN's but I am not sure.
+    duy_dy = torch.sum(J_v * torch.unsqueeze(torch.ones_like(xy[:,0]), 1), dim=1)
     
+    # # Compute the mass conservation equation.
+    mass_conservation = dux_dx[:,0] + duy_dy[:,1]
+
+    loss_f = nn.MSELoss()
+    loss = loss_f(mass_conservation, torch.zeros_like(mass_conservation))
+
+    return loss

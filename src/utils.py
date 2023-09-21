@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import torch.nn as nn
 
 
-class two_dim_dataset(Dataset):
+class normalised_dataset(Dataset):
     def __init__(self, X, y, min_x, max_x, min_y, max_y):
         self.X = X
         self.y = y
@@ -26,6 +26,20 @@ class two_dim_dataset(Dataset):
     
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
+    
+class dataset(Dataset):
+    def __init__(self, X, y):
+        self.X = X
+        self.y = y
+        self.X = torch.from_numpy(self.X).float()
+        self.y = torch.from_numpy(self.y).float()
+        self.len = self.X.shape[0]
+    def __len__(self):
+        return self.len
+    
+    def __getitem__(self, idx):
+        return self.X[idx], self.y[idx]
+    
     
 
 def load_data(csv_path,test_size=0.2, random_state=42, drop_hub= True):
@@ -205,3 +219,19 @@ def physics_informed_loss(xy, net):
     loss = loss_f(mass_conservation, torch.zeros_like(mass_conservation))
 
     return loss
+
+def plot_losses(losses, fig_prefix):
+    fig = plt.figure(figsize=(15, 5))
+    ax1 = fig.add_subplot(121)
+    ax1.plot(losses["collocation"])
+    ax1.set_title("Collocation loss")
+    ax1.set_xlabel("Epoch")
+    ax1.set_ylabel("Loss")
+    ax2 = fig.add_subplot(122)
+    ax2.plot(losses["physics"])
+    ax2.set_title("Physics loss")
+    ax2.set_xlabel("Epoch")
+    ax2.set_ylabel("Loss")
+    plt.tight_layout()
+    plt.savefig(f"Figures/{fig_prefix}_losses.pdf")
+    plt.show()

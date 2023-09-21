@@ -32,15 +32,15 @@ def load_data(csv_path,test_size=0.2, random_state=42, drop_hub= True):
     df = pd.read_csv(csv_path)
     # Drop the specified rows
     if drop_hub:
-        df = df.drop(df[(np.sqrt(df['x']**2 + df['y']**2) <= 1*178.3)].index)
-    X = df[['x', 'y']].values
-    y = df[['U', 'V', 'P']].values
+        df = df.drop(df[(np.sqrt(df['r']**2 + df['z_cyl']**2) <= 1*178.3)].index)
+    X = df[['r', 'z_cyl']].values
+    y = df[['Ux', 'Ur', 'P']].values
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
     min_x = X_train.min(axis=0)   
     max_x = X_train.max(axis=0)
     min_y = y_train.min(axis=0)
     max_y = y_train.max(axis=0)
-    return X_train, X_test, y_train, y_test, min_x, max_x, min_y, max_y
+    return df ,X_train, X_test, y_train, y_test, min_x, max_x, min_y, max_y
 
 def plot(X, outputs, y, fig_prefix=""):
     fig = plt.figure(figsize=(15, 5))
@@ -146,15 +146,15 @@ def plot(X, outputs, y, fig_prefix=""):
 
 def plot_heatmaps(X, outputs, y, fig_prefix=""):
 
-    def plot_single_heatmap(x, y, values, ax, cmap, cbar_label):
-        df = pd.DataFrame.from_dict({'x': x, 'y': y, 'values': values})
-        pivoted = df.pivot("y", "x", "values")
+    def plot_single_heatmap(r, theta, values, ax, cmap, cbar_label):
+        df = pd.DataFrame.from_dict({'r': r, 'theta': theta, 'values': values})
+        pivoted = df.pivot("theta", "r", "values")
         sns.heatmap(pivoted, ax=ax, cmap=cmap, cbar_kws={'label': cbar_label})
         ax.invert_yaxis()
         ax.set_xticks([])
         ax.set_yticks([])
-        ax.set_xlabel('x')
-        ax.set_ylabel('y')
+        ax.set_xlabel('r')
+        ax.set_ylabel('theta')
 
     def plot_all(title, data, file_suffix):
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))

@@ -160,15 +160,15 @@ def plot(X, outputs, y, fig_prefix=""):
 
 def plot_heatmaps(X, outputs, y, fig_prefix=""):
 
-    def plot_single_heatmap(r, theta, values, ax, cmap, cbar_label):
-        df = pd.DataFrame.from_dict({'r': r, 'theta': theta, 'values': values})
-        pivoted = df.pivot("theta", "r", "values")
+    def plot_single_heatmap(r, z, values, ax, cmap, cbar_label):
+        df = pd.DataFrame.from_dict({'r': r, 'z': z, 'values': values})
+        pivoted = df.pivot("r", "z", "values")
         sns.heatmap(pivoted, ax=ax, cmap=cmap, cbar_kws={'label': cbar_label})
         ax.invert_yaxis()
         ax.set_xticks([])
         ax.set_yticks([])
-        ax.set_xlabel('r')
-        ax.set_ylabel('theta')
+        ax.set_xlabel('z')
+        ax.set_ylabel('r')
 
     def plot_all(title, data, file_suffix):
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
@@ -197,27 +197,42 @@ def plot_heatmaps(X, outputs, y, fig_prefix=""):
     plot_all("Error", np.abs(y - outputs), "error")
 
 
-def physics_informed_loss(xy, net):
-    # AUTOGRAD VERSION.
-
-    xy.requires_grad = True
-    uv = net(xy)
-
-    # Compute the Jacobian matrix of uv with respect to xy.
-    J = torch.autograd.functional.jacobian(net, xy)
-    J_u = J[:, 0, :, :]  # Jacobian of u with respect to xy
-    J_v = J[:, 1, :, :]  # Jacobian of v with respect to xy
-
-    # Compute the derivatives of u and v with respect to x and y, respectively.
-    dux_dx = torch.sum(J_u * torch.unsqueeze(torch.ones_like(xy[:,0]), 1), dim=1) # ! These two functions sums columns i.e. this only works because gradients between observations are all zero in this case (only non-zero values in the diagonal). I think that is always the case with PINN's but I am not sure.
-    duy_dy = torch.sum(J_v * torch.unsqueeze(torch.ones_like(xy[:,0]), 1), dim=1)
-    
-    # # Compute the mass conservation equation.
-    mass_conservation = dux_dx[:,0] + duy_dy[:,1]
-
-    loss_f = nn.MSELoss()
-    loss = loss_f(mass_conservation, torch.zeros_like(mass_conservation))
-
+def physics_informed_loss(rz, net):
+    # Given values
+    rho = 1.225  # kg/m^3
+    mu = 1.78406e-05  # kg/m/s
+    mu_t = 41.60993336515875  # kg/m/s
+    nu = mu / rho  # kinematic viscosity
+    nu_total = nu + mu_t / rho  # total kinematic viscosity (laminar + turbulent)
+    r = rz[:, 0]
+    # set up input
+    rz.requires_grad = True
+    uvp = net(rz)
+    u_r = uvp[:, 0]
+    u_z = uvp[:, 1]
+    p = uvp[:, 2]
+    # Calculate the gradients
+    du_r = torch.autograd.grad(u_r, rz, grad_outputs=torch.ones_like(u_r), create_graph=True)[0]
+    du_rdr,du_rdz = du_r[:, 0], du_r[:, 1]
+    du_z = torch.autograd.grad(u_z, rz, grad_outputs=torch.ones_like(u_z), create_graph=True)[0]
+    du_zdr,du_zdz = du_z[:, 0], du_z[:, 1]
+    dp = torch.autograd.grad(p, rz, grad_outputs=torch.ones_like(p), create_graph=True)[0]
+    dpdr,dpdz = dp[:, 0], dp[:, 1]
+    # second derivatives
+    d2u_rdr2 = torch.autograd.grad(du_rdr, rz, grad_outputs=torch.ones_like(du_rdr), create_graph=True)[0][:, 0]
+    d2u_rdz2 = torch.autograd.grad(du_rdz, rz, grad_outputs=torch.ones_like(du_rdz), create_graph=True)[0][:, 1]
+    d2u_zdr2 = torch.autograd.grad(du_zdr, rz, grad_outputs=torch.ones_like(du_zdr), create_graph=True)[0][:, 0]
+    d2u_zdz2 = torch.autograd.grad(du_zdz, rz, grad_outputs=torch.ones_like(du_zdz), create_graph=True)[0][:, 1]
+    # mass conservation 1/r d(ru_r)/dr + du_z/dz = 0 => du_r/dr + u_r/r + du_z/dz +  = 0
+    mass_conservation = du_rdr + u_r/r + du_zdz
+    # r-momentum conservation u_r du_r/dr + u_z du_r/dz + 1/rho dp/dr - nu_total (1/r du_r/dr + d2u_r/dr2 + d2u_r/dz2 - u_r/r^2) = 0
+    # z-momentum conservation u_r du_z/dr + u_z du_z/dz + 1/rho dp/dz - nu_total (1/r du_z/dr + d2u_z/dr2 + d2u_z/dz2) = 0
+    # r-momentum
+    r_momentum = u_r*du_rdr + u_z*du_rdz + 1/rho*dpdr - nu_total*(1/r*du_rdr + d2u_rdr2 + d2u_rdz2 - u_r/r**2)
+    # z-momentum
+    z_momentum = u_r*du_zdr + u_z*du_zdz + 1/rho*dpdz - nu_total*(1/r*du_zdr + d2u_zdr2 + d2u_zdz2)
+    # return the loss
+    loss = torch.mean(mass_conservation**2 + r_momentum**2 + z_momentum**2)
     return loss
 
 def plot_losses(losses, fig_prefix):
@@ -227,11 +242,13 @@ def plot_losses(losses, fig_prefix):
     ax1.set_title("Collocation loss")
     ax1.set_xlabel("Epoch")
     ax1.set_ylabel("Loss")
+    ax1.set_yscale("log")
     ax2 = fig.add_subplot(122)
     ax2.plot(losses["physics"])
     ax2.set_title("Physics loss")
     ax2.set_xlabel("Epoch")
     ax2.set_ylabel("Loss")
+    ax2.set_yscale("log")
     plt.tight_layout()
     plt.savefig(f"Figures/{fig_prefix}_losses.pdf")
     plt.show()

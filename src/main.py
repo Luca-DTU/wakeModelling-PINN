@@ -68,10 +68,11 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub, f
                 y = y*(max_y - min_y) + min_y
             utils.plot_heatmaps(X, outputs, y, fig_prefix)
             utils.plot_losses(losses, fig_prefix)
+
 if __name__ == '__main__':
     csv_path = 'Data/2d_cyl.csv'
     learning_rate = 0.001
-    num_epochs = 100
+    num_epochs = 1000
     batch_size = 1000
     test_size = 0.99
     drop_hub = True

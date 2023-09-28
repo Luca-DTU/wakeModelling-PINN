@@ -1,1 +1,6 @@
 Data/
+__pycache__/
+.pytest_cache/
+.vscode/
+build/
+PINN.egg-info/

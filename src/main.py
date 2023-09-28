@@ -5,7 +5,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 
-def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub, fig_prefix, network = models.simpleNet, include_physics = False, normalise = False):
+def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub, fig_prefix, network = models.simpleNet, include_physics = False, normalise = False,shuffle=True):
     data, X_train, X_test, y_train, y_test, min_x, max_x, min_y, max_y = utils.load_data(csv_path,test_size=test_size, drop_hub=drop_hub)
     # X_all = data[['r', 'z_cyl']].values
     # X_all = torch.from_numpy(X_all).float().to(device)
@@ -16,7 +16,7 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub, f
     else:
         train_dataset = utils.dataset(X_train, y_train)
         test_dataset = utils.dataset(X_test, y_test)
-    train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+    train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=0)
     test_loader = DataLoader(dataset=test_dataset, num_workers=0, batch_size=len(test_dataset))
     # Define the model
     model = network().to(device)
@@ -71,14 +71,15 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub, f
 
 if __name__ == '__main__':
     csv_path = 'Data/2d_cyl.csv'
-    learning_rate = 0.001
-    num_epochs = 1000
+    learning_rate = 0.0001
+    num_epochs = 10000
     batch_size = 1000
     test_size = 0.99
     drop_hub = True
     fig_prefix = "simplenet"
-    include_physics = True,
+    include_physics = True
     normalise = False
+    shuffle = False
 
     main(csv_path, 
         learning_rate,
@@ -88,7 +89,8 @@ if __name__ == '__main__':
         drop_hub, 
         fig_prefix, 
         include_physics=include_physics,
-        normalise = normalise)
+        normalise = normalise,
+        shuffle = shuffle)
 
 
 

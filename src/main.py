@@ -2,11 +2,14 @@ import torch
 from torch.utils.data import DataLoader
 from src import utils, models 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from omegaconf import OmegaConf
 
 
 
-def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub, fig_prefix, network = models.simpleNet, include_physics = False, normalise = False,shuffle=True):
-    data, X_train, X_test, y_train, y_test, min_x, max_x, min_y, max_y = utils.load_data(csv_path,test_size=test_size, drop_hub=drop_hub)
+def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub, 
+         fig_prefix, network = models.simpleNet, include_physics = False, normalise = False,shuffle=True,
+         constants = {}, ):
+    data, X_train, X_test, y_train, y_test, min_x, max_x, min_y, max_y = utils.load_data(csv_path,test_size=test_size, drop_hub=drop_hub, D = constants.D)
     # X_all = data[['r', 'z_cyl']].values
     # X_all = torch.from_numpy(X_all).float().to(device)
     # Create the dataset and dataloader
@@ -26,9 +29,6 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub, f
     # Train the model
     losses = {"collocation": [], "physics": []}
     for epoch in range(num_epochs):
-        # # physics here, all data, no batches
-        # if include_physics:
-        #     physics_loss = utils.physics_informed_loss(X_all, model)
         for batch_X, batch_y in train_loader:
             batch_X = batch_X.to(device)
             batch_y = batch_y.to(device)
@@ -37,7 +37,7 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub, f
             loss = criterion(outputs, batch_y) 
             losses["collocation"].append(loss.item())
             if include_physics:
-                physics_loss = utils.physics_informed_loss(batch_X, model)
+                physics_loss = utils.physics_informed_loss(batch_X, model, constants)
                 loss = loss + physics_loss
             loss.backward()
             optimizer.step()
@@ -70,17 +70,24 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub, f
             utils.plot_losses(losses, fig_prefix)
 
 if __name__ == '__main__':
-    csv_path = 'Data/2d_cyl.csv'
-    learning_rate = 0.0001
-    num_epochs = 10000
-    batch_size = 1000
-    test_size = 0.99
-    drop_hub = True
-    fig_prefix = "simplenet"
-    include_physics = True
-    normalise = False
-    shuffle = False
-
+    # Load the config file
+    config = OmegaConf.load("config.yaml")
+    # Set the parameters
+    csv_path = config.data.csv_path
+    learning_rate = config.training.learning_rate
+    num_epochs = config.training.num_epochs
+    batch_size = config.training.batch_size
+    test_size = config.training.test_size
+    drop_hub = config.data.drop_hub
+    fig_prefix = config.training.fig_prefix
+    include_physics = config.training.include_physics
+    normalise = config.training.normalise
+    shuffle = config.training.shuffle
+    network = config.training.network
+    constants = config.data.constants
+    # convert string to class
+    network = getattr(models, network)
+    # Run the main function
     main(csv_path, 
         learning_rate,
         num_epochs,
@@ -88,9 +95,11 @@ if __name__ == '__main__':
         test_size, 
         drop_hub, 
         fig_prefix, 
+        network = network,
         include_physics=include_physics,
         normalise = normalise,
-        shuffle = shuffle)
+        shuffle = shuffle,
+        constants = constants)
 
 
 

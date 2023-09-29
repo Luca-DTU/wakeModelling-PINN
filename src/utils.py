@@ -42,11 +42,11 @@ class dataset(Dataset):
     
     
 
-def load_data(csv_path,test_size=0.2, random_state=42, drop_hub= True):
+def load_data(csv_path,test_size=0.2, random_state=42, drop_hub= True, D = 0):
     df = pd.read_csv(csv_path)
     # Drop the specified rows
     if drop_hub:
-        df = df.drop(df[(np.sqrt(df['r']**2 + df['z_cyl']**2) <= 1*178.3)].index)
+        df = df.drop(df[(np.sqrt(df['r']**2 + df['z_cyl']**2) <= D)].index)
     X = df[['r', 'z_cyl']].values
     y = df[['Ux', 'Ur', 'P']].values
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
@@ -197,11 +197,11 @@ def plot_heatmaps(X, outputs, y, fig_prefix=""):
     plot_all("Error", np.abs(y - outputs), "error")
 
 
-def physics_informed_loss(rz, net):
+def physics_informed_loss(rz, net, constants, remove_dimensionality = False):
     # Given values
-    rho = 1.225  # kg/m^3
-    mu = 1.78406e-05  # kg/m/s
-    mu_t = 41.60993336515875  # kg/m/s
+    rho = constants["rho"]
+    mu = constants["mu"]
+    mu_t = constants["mu_t"]
     nu = mu / rho  # kinematic viscosity
     nu_total = nu + mu_t / rho  # total kinematic viscosity (laminar + turbulent)
     r = rz[:, 0]

@@ -4,3 +4,4 @@ __pycache__/
 .vscode/
 build/
 PINN.egg-info/
+src/__pycache__/utils.cpython-310.pyc

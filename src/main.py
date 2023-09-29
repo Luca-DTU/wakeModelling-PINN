@@ -8,11 +8,10 @@ from omegaconf import OmegaConf
 
 def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub, 
          fig_prefix, network = models.simpleNet, include_physics = False, normalise = False,shuffle=True,
-         constants = {}, ):
+         constants = {}, remove_dimensionality = False ):
+    
+    network = getattr(models, network)
     data, X_train, X_test, y_train, y_test, min_x, max_x, min_y, max_y = utils.load_data(csv_path,test_size=test_size, drop_hub=drop_hub, D = constants.D)
-    # X_all = data[['r', 'z_cyl']].values
-    # X_all = torch.from_numpy(X_all).float().to(device)
-    # Create the dataset and dataloader
     if normalise:
         train_dataset = utils.normalised_dataset(X_train, y_train, min_x, max_x, min_y, max_y)
         test_dataset = utils.normalised_dataset(X_test, y_test, min_x, max_x, min_y, max_y)
@@ -37,7 +36,10 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
             loss = criterion(outputs, batch_y) 
             losses["collocation"].append(loss.item())
             if include_physics:
-                physics_loss = utils.physics_informed_loss(batch_X, model, constants)
+                if remove_dimensionality:
+                    physics_loss = utils.non_dimensionalized_physics_informed_loss(batch_X, model, constants)
+                else:
+                    physics_loss = utils.physics_informed_loss(batch_X, model, constants)
                 loss = loss + physics_loss
             loss.backward()
             optimizer.step()
@@ -72,34 +74,11 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
 if __name__ == '__main__':
     # Load the config file
     config = OmegaConf.load("config.yaml")
-    # Set the parameters
-    csv_path = config.data.csv_path
-    learning_rate = config.training.learning_rate
-    num_epochs = config.training.num_epochs
-    batch_size = config.training.batch_size
-    test_size = config.training.test_size
-    drop_hub = config.data.drop_hub
-    fig_prefix = config.training.fig_prefix
-    include_physics = config.training.include_physics
-    normalise = config.training.normalise
-    shuffle = config.training.shuffle
-    network = config.training.network
-    constants = config.data.constants
-    # convert string to class
-    network = getattr(models, network)
+    data_config = config.data
+    training_config = config.training
     # Run the main function
-    main(csv_path, 
-        learning_rate,
-        num_epochs,
-        batch_size, 
-        test_size, 
-        drop_hub, 
-        fig_prefix, 
-        network = network,
-        include_physics=include_physics,
-        normalise = normalise,
-        shuffle = shuffle,
-        constants = constants)
+    main(**training_config, **data_config)
+
 
 
 

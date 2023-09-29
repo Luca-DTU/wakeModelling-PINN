@@ -5,9 +5,9 @@
         rho : 1.225 # kg/m^3
         mu : 1.78406e-05 # kg/m/s 
         mu_t : 41.60993336515875 # kg/m/s
-        k : 2.94
         U_inf : 14 # m/s
-        D : 178.3
+        D : 178.3 # m 
+
     training:
       learning_rate : 0.0001
       num_epochs : 10000
@@ -15,6 +15,7 @@
       test_size : 0.99
       fig_prefix : "simplenet"
       include_physics : True
+      remove_dimensionality : True
       normalise : False
       shuffle : False
       network : simpleNet

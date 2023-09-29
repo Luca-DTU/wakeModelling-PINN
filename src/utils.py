@@ -197,11 +197,11 @@ def plot_heatmaps(X, outputs, y, fig_prefix=""):
     plot_all("Error", np.abs(y - outputs), "error")
 
 
-def physics_informed_loss(rz, net, constants, remove_dimensionality = False):
+def physics_informed_loss(rz, net, constants):
     # Given values
-    rho = constants["rho"]
-    mu = constants["mu"]
-    mu_t = constants["mu_t"]
+    rho = constants.rho
+    mu = constants.mu
+    mu_t = constants.mu_t
     nu = mu / rho  # kinematic viscosity
     nu_total = nu + mu_t / rho  # total kinematic viscosity (laminar + turbulent)
     r = rz[:, 0]
@@ -234,6 +234,58 @@ def physics_informed_loss(rz, net, constants, remove_dimensionality = False):
     # return the loss
     loss = torch.mean(mass_conservation**2 + r_momentum**2 + z_momentum**2)
     return loss
+
+def non_dimensionalized_physics_informed_loss(rz, net, constants):
+    # Given values and characteristic scales
+    rho = constants.rho
+    mu = constants.mu
+    mu_t = constants.mu_t
+    
+    U_inf = constants.U_inf  # Characteristic velocity
+    D = constants.D          # Characteristic length
+    P = rho * U_inf*U_inf          # Characteristic pressure
+    
+    # Non-dimensional parameters
+    nu_star = mu / (rho * U_inf * D)  # Non-dimensional kinematic viscosity
+    nu_t_star = mu_t / (rho * U_inf * D)  # Non-dimensional turbulent kinematic viscosity (eddy viscosity)
+    
+    # Non-dimensional coordinates and variables
+    rz_star = rz / D  # Non-dimensional coordinates
+    r_star = rz_star[:, 0]
+    
+    # set up input
+    rz_star.requires_grad = True
+    uvp_star = net(rz_star)  # Non-dimensional velocities and pressure
+    u_r_star = uvp_star[:, 0]
+    u_z_star = uvp_star[:, 1]
+    p_star = uvp_star[:, 2] / P  # Non-dimensional pressure
+    
+    # ... (rest of the code remains similar, just replace the variables with their non-dimensional counterparts)
+    # Calculate the gradients
+    du_r_star = torch.autograd.grad(u_r_star, rz_star, grad_outputs=torch.ones_like(u_r_star), create_graph=True)[0]
+    du_r_dr_star, du_r_dz_star = du_r_star[:, 0], du_r_star[:, 1]
+    du_z_star = torch.autograd.grad(u_z_star, rz_star, grad_outputs=torch.ones_like(u_z_star), create_graph=True)[0]
+    du_z_dr_star, du_z_dz_star = du_z_star[:, 0], du_z_star[:, 1]
+    dp_star = torch.autograd.grad(p_star, rz_star, grad_outputs=torch.ones_like(p_star), create_graph=True)[0]
+    dp_dr_star, dp_dz_star = dp_star[:, 0], dp_star[:, 1]
+    # second derivatives
+    d2u_r_dr2_star = torch.autograd.grad(du_r_dr_star, rz_star, grad_outputs=torch.ones_like(du_r_dr_star), create_graph=True)[0][:, 0]
+    d2u_r_dz2_star = torch.autograd.grad(du_r_dz_star, rz_star, grad_outputs=torch.ones_like(du_r_dz_star), create_graph=True)[0][:, 1]
+    d2u_z_dr2_star = torch.autograd.grad(du_z_dr_star, rz_star, grad_outputs=torch.ones_like(du_z_dr_star), create_graph=True)[0][:, 0]
+    d2u_z_dz2_star = torch.autograd.grad(du_z_dz_star, rz_star, grad_outputs=torch.ones_like(du_z_dz_star), create_graph=True)[0][:, 1]
+    # Mass conservation equation in non-dimensional form
+    mass_conservation = du_r_dr_star + u_r_star / r_star + du_z_dz_star
+    # r-momentum and z-momentum equations in non-dimensional form
+    r_momentum = u_r_star * du_r_dr_star + u_z_star * du_r_dz_star + dp_dr_star - \
+                 (nu_star + nu_t_star) * (1 / r_star * du_r_dr_star + d2u_r_dr2_star + d2u_r_dz2_star - u_r_star / r_star**2)
+                 
+    z_momentum = u_r_star * du_z_dr_star + u_z_star * du_z_dz_star + dp_dz_star - \
+                 (nu_star + nu_t_star) * (1 / r_star * du_z_dr_star + d2u_z_dr2_star + d2u_z_dz2_star)
+    
+    # Return the non-dimensionalized loss
+    loss = torch.mean(mass_conservation**2 + r_momentum**2 + z_momentum**2)
+    return loss
+
 
 def plot_losses(losses, fig_prefix):
     fig = plt.figure(figsize=(15, 5))

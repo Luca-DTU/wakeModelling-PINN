@@ -7,17 +7,19 @@ from omegaconf import OmegaConf
 
 
 def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub, 
-         fig_prefix, network = models.simpleNet, include_physics = False, normalise = False,shuffle=True,
-         constants = {}, remove_dimensionality = False ):
-    
+         fig_prefix, network = models.simpleNet, include_physics = False, normaliser = None,shuffle=True,
+         constants = {}, remove_dimensionality = False):
     network = getattr(models, network)
-    data, X_train, X_test, y_train, y_test, min_x, max_x, min_y, max_y = utils.load_data(csv_path,test_size=test_size, drop_hub=drop_hub, D = constants.D)
-    if normalise:
-        train_dataset = utils.normalised_dataset(X_train, y_train, min_x, max_x, min_y, max_y)
-        test_dataset = utils.normalised_dataset(X_test, y_test, min_x, max_x, min_y, max_y)
-    else:
-        train_dataset = utils.dataset(X_train, y_train)
-        test_dataset = utils.dataset(X_test, y_test)
+    data, X_train, X_test, y_train, y_test = utils.load_data(csv_path,test_size=test_size, drop_hub=drop_hub, D = constants.D)
+    if normaliser is not None:
+        normaliser = getattr(utils, normaliser)
+        # init normaliser
+        Normaliser = normaliser(X_train, y_train, constants)
+        # normalise data
+        X_train, y_train = Normaliser.normalise(X_train, y_train)
+        X_test, y_test = Normaliser.normalise(X_test, y_test)
+    train_dataset = utils.dataset(X_train, y_train)
+    test_dataset = utils.dataset(X_test, y_test)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=0)
     test_loader = DataLoader(dataset=test_dataset, num_workers=0, batch_size=len(test_dataset))
     # Define the model
@@ -37,7 +39,7 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
             losses["collocation"].append(loss.item())
             if include_physics:
                 if remove_dimensionality:
-                    physics_loss = utils.non_dimensionalized_physics_informed_loss(batch_X, model, constants)
+                    physics_loss = utils.non_dimensionalized_physics_informed_loss(batch_X, model, constants, physical_normaliser=Normaliser.physical)
                 else:
                     physics_loss = utils.physics_informed_loss(batch_X, model, constants)
                 loss = loss + physics_loss
@@ -63,11 +65,8 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
             X = X.cpu().detach().numpy()
             outputs = outputs.cpu().detach().numpy()
             y = y.cpu().detach().numpy()
-            # Denormalise
-            if normalise:
-                X = X*(max_x - min_x) + min_x
-                outputs = outputs*(max_y - min_y) + min_y
-                y = y*(max_y - min_y) + min_y
+            if normaliser is not None:
+                X, outputs, y = Normaliser.denormalise(X, outputs, y)
             utils.plot_heatmaps(X, outputs, y, fig_prefix)
             utils.plot_losses(losses, fig_prefix)
 

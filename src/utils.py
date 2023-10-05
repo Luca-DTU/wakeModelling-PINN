@@ -7,25 +7,6 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import torch.nn as nn
 
-
-class normalised_dataset(Dataset):
-    def __init__(self, X, y, min_x, max_x, min_y, max_y):
-        self.X = X
-        self.y = y
-        self.min_x = min_x
-        self.max_x = max_x
-        self.min_y = min_y
-        self.max_y = max_y
-        self.X = (self.X - self.min_x)/(self.max_x - self.min_x)
-        self.y = (self.y - self.min_y)/(self.max_y - self.min_y)
-        self.X = torch.from_numpy(self.X).float()
-        self.y = torch.from_numpy(self.y).float()
-        self.len = self.X.shape[0]
-    def __len__(self):
-        return self.len
-    
-    def __getitem__(self, idx):
-        return self.X[idx], self.y[idx]
     
 class dataset(Dataset):
     def __init__(self, X, y):
@@ -40,6 +21,72 @@ class dataset(Dataset):
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
     
+class Z_normaliser():
+    def __init__(self, X, y,constants):
+        self.mean = np.mean(X, axis=0)
+        self.std = np.std(X, axis=0)
+        self.mean_y = np.mean(y, axis=0)
+        self.std_y = np.std(y, axis=0)
+        self.physical = False
+    def normalise(self, X,y):
+        X = (X - self.mean) / self.std
+        y = (y - self.mean_y) / self.std_y
+        return X,y
+    def denormalise(self, X,outputs,y):
+        X = X * self.std + self.mean
+        outputs = outputs * self.std_y + self.mean_y
+        y = y * self.std_y + self.mean_y
+        return X, outputs, y
+    
+class min_max_normaliser():
+    def __init__(self, X, y,constants):
+        self.min = np.min(X, axis=0)
+        self.max = np.max(X, axis=0)
+        self.min_y = np.min(y, axis=0)
+        self.max_y = np.max(y, axis=0)
+        self.physical = False
+    def normalise(self, X,y):
+        X = (X - self.min) / (self.max - self.min)
+        y = (y - self.min_y) / (self.max_y - self.min_y)
+        return X,y
+    def denormalise(self, X,outputs,y):
+        X = X * (self.max - self.min) + self.min
+        outputs = outputs * (self.max_y - self.min_y) + self.min_y
+        y = y * (self.max_y - self.min_y) + self.min_y
+        return X, outputs, y
+        
+        
+class physics_normaliser():
+    def __init__(self,X,y,constants):
+        self.physical = True
+        self.constants = constants
+    def normalise(self, X,y):
+        X = X / self.constants.D
+        rho = self.constants.rho
+        U_inf = self.constants.U_inf
+        uv = y[:,0:2]
+        p = y[:,2].reshape(-1,1)
+        uv = uv / U_inf
+        p = p / (rho * U_inf**2)
+        return X, np.concatenate((uv,p),axis=1)
+    def denormalise(self, X,outputs,y):
+        # X
+        X = X * self.constants.D
+        # y
+        rho = self.constants.rho
+        U_inf = self.constants.U_inf
+        uv = y[:,0:2]
+        p = y[:,2].reshape(-1,1)
+        uv = uv * U_inf
+        p = p * rho * U_inf**2
+        y = np.concatenate((uv,p),axis=1)
+        # outputs
+        uv = outputs[:,0:2]
+        p = outputs[:,2].reshape(-1,1)
+        uv = uv * U_inf
+        p = p * rho * U_inf**2
+        outputs = np.concatenate((uv,p),axis=1)
+        return X, outputs, y
     
 
 def load_data(csv_path,test_size=0.2, random_state=42, drop_hub= True, D = 0):
@@ -50,11 +97,7 @@ def load_data(csv_path,test_size=0.2, random_state=42, drop_hub= True, D = 0):
     X = df[['r', 'z_cyl']].values
     y = df[['Ux', 'Ur', 'P']].values
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
-    min_x = X_train.min(axis=0)   
-    max_x = X_train.max(axis=0)
-    min_y = y_train.min(axis=0)
-    max_y = y_train.max(axis=0)
-    return df ,X_train, X_test, y_train, y_test, min_x, max_x, min_y, max_y
+    return df ,X_train, X_test, y_train, y_test
 
 def plot(X, outputs, y, fig_prefix=""):
     fig = plt.figure(figsize=(15, 5))
@@ -235,7 +278,7 @@ def physics_informed_loss(rz, net, constants):
     loss = torch.mean(mass_conservation**2 + r_momentum**2 + z_momentum**2)
     return loss
 
-def non_dimensionalized_physics_informed_loss(rz, net, constants):
+def non_dimensionalized_physics_informed_loss(rz, net, constants,physical_normaliser = True):
     # Given values and characteristic scales
     rho = constants.rho
     mu = constants.mu
@@ -243,14 +286,17 @@ def non_dimensionalized_physics_informed_loss(rz, net, constants):
     
     U_inf = constants.U_inf  # Characteristic velocity
     D = constants.D          # Characteristic length
-    P = rho * U_inf*U_inf          # Characteristic pressure
+    P = rho * U_inf*U_inf    # Characteristic pressure
     
     # Non-dimensional parameters
     nu_star = mu / (rho * U_inf * D)  # Non-dimensional kinematic viscosity
     nu_t_star = mu_t / (rho * U_inf * D)  # Non-dimensional turbulent kinematic viscosity (eddy viscosity)
     
     # Non-dimensional coordinates and variables
-    rz_star = rz / D  # Non-dimensional coordinates
+    if physical_normaliser:
+        rz_star = rz #/ D  # Non-dimensional coordinates
+    else:
+        rz_star = rz / D
     r_star = rz_star[:, 0]
     
     # set up input
@@ -258,7 +304,10 @@ def non_dimensionalized_physics_informed_loss(rz, net, constants):
     uvp_star = net(rz_star)  # Non-dimensional velocities and pressure
     u_r_star = uvp_star[:, 0]
     u_z_star = uvp_star[:, 1]
-    p_star = uvp_star[:, 2] / P  # Non-dimensional pressure
+    if physical_normaliser:
+        p_star = uvp_star[:, 2]
+    else:
+        p_star = uvp_star[:, 2] / P  # Non-dimensional pressure
     
     # ... (rest of the code remains similar, just replace the variables with their non-dimensional counterparts)
     # Calculate the gradients

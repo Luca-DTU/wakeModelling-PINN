@@ -1,6 +1,6 @@
 import torch
 from torch.utils.data import DataLoader
-from src import utils, models 
+from src import utils, models, normalisers
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 from omegaconf import OmegaConf
 
@@ -13,14 +13,14 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
     data, X_train, X_test, y_train, y_test = utils.load_data(csv_path,test_size=test_size, drop_hub=drop_hub, D = constants["D"])
     if normaliser is not None:
         if isinstance(normaliser, str):
-            normaliser = getattr(utils, normaliser)
+            normaliser = getattr(normalisers, normaliser)
             # init normaliser
             Normaliser = normaliser(X_train, y_train, constants)
             # normalise data
             X_train, y_train = Normaliser.normalise(X_train, y_train)
             X_test, y_test = Normaliser.normalise(X_test, y_test)
         elif isinstance(normaliser,list):
-            normaliser = [getattr(utils, n) for n in normaliser]
+            normaliser = [getattr(normalisers, n) for n in normaliser]
             Normaliser = []
             for n in normaliser:
                 # init normaliser

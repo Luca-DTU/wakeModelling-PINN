@@ -1,3 +1,6 @@
+import numpy as np
+import torch
+
 class Z_normaliser():
     def __init__(self, X, y,constants):
         self.mean = np.mean(X, axis=0)

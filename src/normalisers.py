@@ -52,8 +52,6 @@ class min_max_normaliser():
             min_y = self.min_y
         X_ = X * (max_ - min_) + min_
         outputs_ = outputs * (max_y - min_y) + min_y
-        print(outputs_.grad_fn, outputs_.grad_fn.next_functions)
-        print(outputs.grad_fn,outputs.grad_fn.next_functions)
         if y is not None:
             y_ = y * (max_y - min_y) + min_y
         else:

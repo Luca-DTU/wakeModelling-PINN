@@ -71,6 +71,15 @@ def physics_informed_loss(rz, net, constants):
     loss = torch.mean(mass_conservation**2 + r_momentum**2 + z_momentum**2)
     return loss
 
+def print_graph(g, indent=''):
+    """Prints the computation graph"""
+    if g is None:
+        return
+    print(indent, g)
+    for next_g in g.next_functions:
+        if next_g[0] is not None:
+            print_graph(next_g[0], indent + '  ')
+
 def non_dimensionalized_physics_informed_loss(rz, net, constants,Normaliser):
     if isinstance(Normaliser,str):
         physical_normaliser = Normaliser.physical
@@ -105,16 +114,18 @@ def non_dimensionalized_physics_informed_loss(rz, net, constants,Normaliser):
     if isinstance(Normaliser,list):
         for Normaliser_ in Normaliser[::-1]: 
             if not Normaliser_.physical: 
-                rz_star_, uvp_star_, _ = Normaliser_.denormalise(rz_star, uvp_star, None)
+                rz_star, uvp_star, _ = Normaliser_.denormalise(rz_star, uvp_star, None)
     ###
-    u_r_star = uvp_star_[:, 0]
-    u_z_star = uvp_star_[:, 1]
+    print_graph(uvp_star.grad_fn)
+    print_graph(rz_star.grad_fn)
+    u_r_star = uvp_star[:, 0]
+    u_z_star = uvp_star[:, 1]
     if physical_normaliser:
-        p_star = uvp_star_[:, 2]
+        p_star = uvp_star[:, 2]
     else:
-        p_star = uvp_star_[:, 2] / P  # Non-dimensional pressure
+        p_star = uvp_star[:, 2] / P  # Non-dimensional pressure
     # Calculate the gradients
-    du_r_star = torch.autograd.grad(u_r_star, rz_star_, grad_outputs=torch.ones_like(u_r_star), create_graph=True)[0]
+    du_r_star = torch.autograd.grad(u_r_star, rz_star, grad_outputs=torch.ones_like(u_r_star), create_graph=True)[0]
     du_r_dr_star, du_r_dz_star = du_r_star[:, 0], du_r_star[:, 1]
     du_z_star = torch.autograd.grad(u_z_star, rz_star, grad_outputs=torch.ones_like(u_z_star), create_graph=True)[0]
     du_z_dr_star, du_z_dz_star = du_z_star[:, 0], du_z_star[:, 1]

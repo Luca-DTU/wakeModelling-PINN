@@ -33,11 +33,21 @@ class Z_normaliser():
         y = (y - self.mean_y) / self.std_y
         return X,y
     def denormalise(self, X,outputs,y):
-        X = X * self.std + self.mean
-        outputs = outputs * self.std_y + self.mean_y
-        y = y * self.std_y + self.mean_y
+        if isinstance(X,torch.Tensor):
+            std = torch.from_numpy(self.std).float()
+            mean = torch.from_numpy(self.mean).float()
+            std_y = torch.from_numpy(self.std_y).float()
+            mean_y = torch.from_numpy(self.mean_y).float()
+        else:
+            std = self.std
+            mean = self.mean
+            std_y = self.std_y
+            mean_y = self.mean_y
+        X = X * std + mean
+        outputs = outputs * std_y + mean_y
+        if y is not None:
+            y = y * std_y + mean_y
         return X, outputs, y
-    
 class min_max_normaliser():
     def __init__(self, X, y,constants):
         self.min = np.min(X, axis=0)
@@ -50,31 +60,46 @@ class min_max_normaliser():
         y = (y - self.min_y) / (self.max_y - self.min_y)
         return X,y
     def denormalise(self, X,outputs,y):
-        X = X * (self.max - self.min) + self.min
-        outputs = outputs * (self.max_y - self.min_y) + self.min_y
-        y = y * (self.max_y - self.min_y) + self.min_y
-        return X, outputs, y
-        
+        if isinstance(X,torch.Tensor):
+            max_ = torch.from_numpy(self.max).float().to(X.device)
+            min_ = torch.from_numpy(self.min).float().to(X.device)
+            max_y = torch.from_numpy(self.max_y).float().to(outputs.device)
+            min_y = torch.from_numpy(self.min_y).float().to(outputs.device)
+        else:
+            max_ = self.max
+            min_ = self.min
+            max_y = self.max_y
+            min_y = self.min_y
+        X_ = X * (max_ - min_) + min_
+        outputs_ = outputs * (max_y - min_y) + min_y
+        print(outputs_.grad_fn, outputs_.grad_fn.next_functions)
+        print(outputs.grad_fn,outputs.grad_fn.next_functions)
+        if y is not None:
+            y_ = y * (max_y - min_y) + min_y
+        else:
+            y_ = None
+        return X_, outputs_, y_
         
 class physics_normaliser():
     def __init__(self,X,y,constants):
         self.physical = True
         self.constants = constants
     def normalise(self, X,y):
-        X = X / self.constants.D
-        rho = self.constants.rho
-        U_inf = self.constants.U_inf
+        X = X / self.constants["D"]
+        rho = self.constants["rho"]
+        U_inf = self.constants["U_inf"]
         uv = y[:,0:2]
         p = y[:,2].reshape(-1,1)
         uv = uv / U_inf
         p = p / (rho * U_inf**2)
         return X, np.concatenate((uv,p),axis=1)
+    
     def denormalise(self, X,outputs,y):
         # X
-        X = X * self.constants.D
+        X = X * self.constants["D"]
         # y
-        rho = self.constants.rho
-        U_inf = self.constants.U_inf
+        rho = self.constants["rho"]
+        U_inf = self.constants["U_inf"]
         uv = y[:,0:2]
         p = y[:,2].reshape(-1,1)
         uv = uv * U_inf
@@ -98,6 +123,132 @@ def load_data(csv_path,test_size=0.2, random_state=42, drop_hub= True, D = 0):
     y = df[['Ux', 'Ur', 'P']].values
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
     return df ,X_train, X_test, y_train, y_test
+
+
+def physics_informed_loss(rz, net, constants):
+    # Given values
+    rho = constants["rho"]
+    mu = constants["mu"]
+    mu_t = constants["mu_t"]
+    nu = mu / rho  # kinematic viscosity
+    nu_total = nu + mu_t / rho  # total kinematic viscosity (laminar + turbulent)
+    r = rz[:, 0]
+    # set up input
+    rz.requires_grad = True
+    uvp = net(rz)
+    u_r = uvp[:, 0]
+    u_z = uvp[:, 1]
+    p = uvp[:, 2]
+    # Calculate the gradients
+    du_r = torch.autograd.grad(u_r, rz, grad_outputs=torch.ones_like(u_r), create_graph=True)[0]
+    du_rdr,du_rdz = du_r[:, 0], du_r[:, 1]
+    du_z = torch.autograd.grad(u_z, rz, grad_outputs=torch.ones_like(u_z), create_graph=True)[0]
+    du_zdr,du_zdz = du_z[:, 0], du_z[:, 1]
+    dp = torch.autograd.grad(p, rz, grad_outputs=torch.ones_like(p), create_graph=True)[0]
+    dpdr,dpdz = dp[:, 0], dp[:, 1]
+    # second derivatives
+    d2u_rdr2 = torch.autograd.grad(du_rdr, rz, grad_outputs=torch.ones_like(du_rdr), create_graph=True)[0][:, 0]
+    d2u_rdz2 = torch.autograd.grad(du_rdz, rz, grad_outputs=torch.ones_like(du_rdz), create_graph=True)[0][:, 1]
+    d2u_zdr2 = torch.autograd.grad(du_zdr, rz, grad_outputs=torch.ones_like(du_zdr), create_graph=True)[0][:, 0]
+    d2u_zdz2 = torch.autograd.grad(du_zdz, rz, grad_outputs=torch.ones_like(du_zdz), create_graph=True)[0][:, 1]
+    # mass conservation 1/r d(ru_r)/dr + du_z/dz = 0 => du_r/dr + u_r/r + du_z/dz +  = 0
+    mass_conservation = du_rdr + u_r/r + du_zdz
+    # r-momentum conservation u_r du_r/dr + u_z du_r/dz + 1/rho dp/dr - nu_total (1/r du_r/dr + d2u_r/dr2 + d2u_r/dz2 - u_r/r^2) = 0
+    # z-momentum conservation u_r du_z/dr + u_z du_z/dz + 1/rho dp/dz - nu_total (1/r du_z/dr + d2u_z/dr2 + d2u_z/dz2) = 0
+    # r-momentum
+    r_momentum = u_r*du_rdr + u_z*du_rdz + 1/rho*dpdr - nu_total*(1/r*du_rdr + d2u_rdr2 + d2u_rdz2 - u_r/r**2)
+    # z-momentum
+    z_momentum = u_r*du_zdr + u_z*du_zdz + 1/rho*dpdz - nu_total*(1/r*du_zdr + d2u_zdr2 + d2u_zdz2)
+    # return the loss
+    loss = torch.mean(mass_conservation**2 + r_momentum**2 + z_momentum**2)
+    return loss
+
+def non_dimensionalized_physics_informed_loss(rz, net, constants,Normaliser):
+    if isinstance(Normaliser,str):
+        physical_normaliser = Normaliser.physical
+    elif isinstance(Normaliser,list):
+        physical_normaliser = any([Normaliser_.physical for Normaliser_ in Normaliser])
+    # Given values and characteristic scales
+    rho = constants["rho"]
+    mu = constants["mu"]
+    mu_t = constants["mu_t"]
+    
+    U_inf = constants["U_inf"]  # Characteristic velocity
+    D = constants["D"]        # Characteristic length
+    P = rho * U_inf*U_inf    # Characteristic pressure
+    
+    # Non-dimensional parameters
+    nu_star = mu / (rho * U_inf * D)  # Non-dimensional kinematic viscosity
+    nu_t_star = mu_t / (rho * U_inf * D)  # Non-dimensional turbulent kinematic viscosity (eddy viscosity)
+    
+    # Non-dimensional coordinates and variables
+    if physical_normaliser:
+        rz_star = rz #/ D  # Non-dimensional coordinates
+    else:
+        rz_star = rz / D
+    r_star = rz_star[:, 0]
+    
+    # set up input
+    rz_star.requires_grad = True
+    uvp_star = net(rz_star)  # Non-dimensional velocities and pressure
+    ###
+    # note: this approach assumes that we do physical normalisation first and then the numerical ones (min-max or z-score)
+    # remember to raise an error if the order is wrong at the beginning of main()
+    if isinstance(Normaliser,list):
+        for Normaliser_ in Normaliser[::-1]: 
+            if not Normaliser_.physical: 
+                rz_star_, uvp_star_, _ = Normaliser_.denormalise(rz_star, uvp_star, None)
+    ###
+    u_r_star = uvp_star_[:, 0]
+    u_z_star = uvp_star_[:, 1]
+    if physical_normaliser:
+        p_star = uvp_star_[:, 2]
+    else:
+        p_star = uvp_star_[:, 2] / P  # Non-dimensional pressure
+    # Calculate the gradients
+    du_r_star = torch.autograd.grad(u_r_star, rz_star_, grad_outputs=torch.ones_like(u_r_star), create_graph=True)[0]
+    du_r_dr_star, du_r_dz_star = du_r_star[:, 0], du_r_star[:, 1]
+    du_z_star = torch.autograd.grad(u_z_star, rz_star, grad_outputs=torch.ones_like(u_z_star), create_graph=True)[0]
+    du_z_dr_star, du_z_dz_star = du_z_star[:, 0], du_z_star[:, 1]
+    dp_star = torch.autograd.grad(p_star, rz_star, grad_outputs=torch.ones_like(p_star), create_graph=True)[0]
+    dp_dr_star, dp_dz_star = dp_star[:, 0], dp_star[:, 1]
+    # second derivatives
+    d2u_r_dr2_star = torch.autograd.grad(du_r_dr_star, rz_star, grad_outputs=torch.ones_like(du_r_dr_star), create_graph=True)[0][:, 0]
+    d2u_r_dz2_star = torch.autograd.grad(du_r_dz_star, rz_star, grad_outputs=torch.ones_like(du_r_dz_star), create_graph=True)[0][:, 1]
+    d2u_z_dr2_star = torch.autograd.grad(du_z_dr_star, rz_star, grad_outputs=torch.ones_like(du_z_dr_star), create_graph=True)[0][:, 0]
+    d2u_z_dz2_star = torch.autograd.grad(du_z_dz_star, rz_star, grad_outputs=torch.ones_like(du_z_dz_star), create_graph=True)[0][:, 1]
+    # Mass conservation equation in non-dimensional form
+    mass_conservation = du_r_dr_star + u_r_star / r_star + du_z_dz_star
+    # r-momentum and z-momentum equations in non-dimensional form
+    r_momentum = u_r_star * du_r_dr_star + u_z_star * du_r_dz_star + dp_dr_star - \
+                 (nu_star + nu_t_star) * (1 / r_star * du_r_dr_star + d2u_r_dr2_star + d2u_r_dz2_star - u_r_star / r_star**2)
+                 
+    z_momentum = u_r_star * du_z_dr_star + u_z_star * du_z_dz_star + dp_dz_star - \
+                 (nu_star + nu_t_star) * (1 / r_star * du_z_dr_star + d2u_z_dr2_star + d2u_z_dz2_star)
+    
+    # Return the non-dimensionalized loss
+    loss = torch.mean(mass_conservation**2 + r_momentum**2 + z_momentum**2)
+    return loss
+
+
+def plot_losses(losses, fig_prefix):
+    fig = plt.figure(figsize=(15, 5))
+    ax1 = fig.add_subplot(121)
+    ax1.plot(losses["collocation"])
+    ax1.set_title("Collocation loss")
+    ax1.set_xlabel("Epoch")
+    ax1.set_ylabel("Loss")
+    ax1.set_yscale("log")
+    ax2 = fig.add_subplot(122)
+    ax2.plot(losses["physics"])
+    ax2.set_title("Physics loss")
+    ax2.set_xlabel("Epoch")
+    ax2.set_ylabel("Loss")
+    ax2.set_yscale("log")
+    plt.tight_layout()
+    plt.savefig(f"Figures/{fig_prefix}_losses.pdf")
+    plt.show()
+
 
 def plot(X, outputs, y, fig_prefix=""):
     fig = plt.figure(figsize=(15, 5))
@@ -238,118 +389,3 @@ def plot_heatmaps(X, outputs, y, fig_prefix=""):
     plot_all("Predicted", outputs, "NN")
     plot_all("Actual", y, "actual")
     plot_all("Error", np.abs(y - outputs), "error")
-
-
-def physics_informed_loss(rz, net, constants):
-    # Given values
-    rho = constants.rho
-    mu = constants.mu
-    mu_t = constants.mu_t
-    nu = mu / rho  # kinematic viscosity
-    nu_total = nu + mu_t / rho  # total kinematic viscosity (laminar + turbulent)
-    r = rz[:, 0]
-    # set up input
-    rz.requires_grad = True
-    uvp = net(rz)
-    u_r = uvp[:, 0]
-    u_z = uvp[:, 1]
-    p = uvp[:, 2]
-    # Calculate the gradients
-    du_r = torch.autograd.grad(u_r, rz, grad_outputs=torch.ones_like(u_r), create_graph=True)[0]
-    du_rdr,du_rdz = du_r[:, 0], du_r[:, 1]
-    du_z = torch.autograd.grad(u_z, rz, grad_outputs=torch.ones_like(u_z), create_graph=True)[0]
-    du_zdr,du_zdz = du_z[:, 0], du_z[:, 1]
-    dp = torch.autograd.grad(p, rz, grad_outputs=torch.ones_like(p), create_graph=True)[0]
-    dpdr,dpdz = dp[:, 0], dp[:, 1]
-    # second derivatives
-    d2u_rdr2 = torch.autograd.grad(du_rdr, rz, grad_outputs=torch.ones_like(du_rdr), create_graph=True)[0][:, 0]
-    d2u_rdz2 = torch.autograd.grad(du_rdz, rz, grad_outputs=torch.ones_like(du_rdz), create_graph=True)[0][:, 1]
-    d2u_zdr2 = torch.autograd.grad(du_zdr, rz, grad_outputs=torch.ones_like(du_zdr), create_graph=True)[0][:, 0]
-    d2u_zdz2 = torch.autograd.grad(du_zdz, rz, grad_outputs=torch.ones_like(du_zdz), create_graph=True)[0][:, 1]
-    # mass conservation 1/r d(ru_r)/dr + du_z/dz = 0 => du_r/dr + u_r/r + du_z/dz +  = 0
-    mass_conservation = du_rdr + u_r/r + du_zdz
-    # r-momentum conservation u_r du_r/dr + u_z du_r/dz + 1/rho dp/dr - nu_total (1/r du_r/dr + d2u_r/dr2 + d2u_r/dz2 - u_r/r^2) = 0
-    # z-momentum conservation u_r du_z/dr + u_z du_z/dz + 1/rho dp/dz - nu_total (1/r du_z/dr + d2u_z/dr2 + d2u_z/dz2) = 0
-    # r-momentum
-    r_momentum = u_r*du_rdr + u_z*du_rdz + 1/rho*dpdr - nu_total*(1/r*du_rdr + d2u_rdr2 + d2u_rdz2 - u_r/r**2)
-    # z-momentum
-    z_momentum = u_r*du_zdr + u_z*du_zdz + 1/rho*dpdz - nu_total*(1/r*du_zdr + d2u_zdr2 + d2u_zdz2)
-    # return the loss
-    loss = torch.mean(mass_conservation**2 + r_momentum**2 + z_momentum**2)
-    return loss
-
-def non_dimensionalized_physics_informed_loss(rz, net, constants,physical_normaliser = True):
-    # Given values and characteristic scales
-    rho = constants.rho
-    mu = constants.mu
-    mu_t = constants.mu_t
-    
-    U_inf = constants.U_inf  # Characteristic velocity
-    D = constants.D          # Characteristic length
-    P = rho * U_inf*U_inf    # Characteristic pressure
-    
-    # Non-dimensional parameters
-    nu_star = mu / (rho * U_inf * D)  # Non-dimensional kinematic viscosity
-    nu_t_star = mu_t / (rho * U_inf * D)  # Non-dimensional turbulent kinematic viscosity (eddy viscosity)
-    
-    # Non-dimensional coordinates and variables
-    if physical_normaliser:
-        rz_star = rz #/ D  # Non-dimensional coordinates
-    else:
-        rz_star = rz / D
-    r_star = rz_star[:, 0]
-    
-    # set up input
-    rz_star.requires_grad = True
-    uvp_star = net(rz_star)  # Non-dimensional velocities and pressure
-    u_r_star = uvp_star[:, 0]
-    u_z_star = uvp_star[:, 1]
-    if physical_normaliser:
-        p_star = uvp_star[:, 2]
-    else:
-        p_star = uvp_star[:, 2] / P  # Non-dimensional pressure
-    
-    # ... (rest of the code remains similar, just replace the variables with their non-dimensional counterparts)
-    # Calculate the gradients
-    du_r_star = torch.autograd.grad(u_r_star, rz_star, grad_outputs=torch.ones_like(u_r_star), create_graph=True)[0]
-    du_r_dr_star, du_r_dz_star = du_r_star[:, 0], du_r_star[:, 1]
-    du_z_star = torch.autograd.grad(u_z_star, rz_star, grad_outputs=torch.ones_like(u_z_star), create_graph=True)[0]
-    du_z_dr_star, du_z_dz_star = du_z_star[:, 0], du_z_star[:, 1]
-    dp_star = torch.autograd.grad(p_star, rz_star, grad_outputs=torch.ones_like(p_star), create_graph=True)[0]
-    dp_dr_star, dp_dz_star = dp_star[:, 0], dp_star[:, 1]
-    # second derivatives
-    d2u_r_dr2_star = torch.autograd.grad(du_r_dr_star, rz_star, grad_outputs=torch.ones_like(du_r_dr_star), create_graph=True)[0][:, 0]
-    d2u_r_dz2_star = torch.autograd.grad(du_r_dz_star, rz_star, grad_outputs=torch.ones_like(du_r_dz_star), create_graph=True)[0][:, 1]
-    d2u_z_dr2_star = torch.autograd.grad(du_z_dr_star, rz_star, grad_outputs=torch.ones_like(du_z_dr_star), create_graph=True)[0][:, 0]
-    d2u_z_dz2_star = torch.autograd.grad(du_z_dz_star, rz_star, grad_outputs=torch.ones_like(du_z_dz_star), create_graph=True)[0][:, 1]
-    # Mass conservation equation in non-dimensional form
-    mass_conservation = du_r_dr_star + u_r_star / r_star + du_z_dz_star
-    # r-momentum and z-momentum equations in non-dimensional form
-    r_momentum = u_r_star * du_r_dr_star + u_z_star * du_r_dz_star + dp_dr_star - \
-                 (nu_star + nu_t_star) * (1 / r_star * du_r_dr_star + d2u_r_dr2_star + d2u_r_dz2_star - u_r_star / r_star**2)
-                 
-    z_momentum = u_r_star * du_z_dr_star + u_z_star * du_z_dz_star + dp_dz_star - \
-                 (nu_star + nu_t_star) * (1 / r_star * du_z_dr_star + d2u_z_dr2_star + d2u_z_dz2_star)
-    
-    # Return the non-dimensionalized loss
-    loss = torch.mean(mass_conservation**2 + r_momentum**2 + z_momentum**2)
-    return loss
-
-
-def plot_losses(losses, fig_prefix):
-    fig = plt.figure(figsize=(15, 5))
-    ax1 = fig.add_subplot(121)
-    ax1.plot(losses["collocation"])
-    ax1.set_title("Collocation loss")
-    ax1.set_xlabel("Epoch")
-    ax1.set_ylabel("Loss")
-    ax1.set_yscale("log")
-    ax2 = fig.add_subplot(122)
-    ax2.plot(losses["physics"])
-    ax2.set_title("Physics loss")
-    ax2.set_xlabel("Epoch")
-    ax2.set_ylabel("Loss")
-    ax2.set_yscale("log")
-    plt.tight_layout()
-    plt.savefig(f"Figures/{fig_prefix}_losses.pdf")
-    plt.show()

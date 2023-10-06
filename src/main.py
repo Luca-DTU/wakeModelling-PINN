@@ -10,14 +10,28 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
          fig_prefix, network = models.simpleNet, include_physics = False, normaliser = None,shuffle=True,
          constants = {}, remove_dimensionality = False):
     network = getattr(models, network)
-    data, X_train, X_test, y_train, y_test = utils.load_data(csv_path,test_size=test_size, drop_hub=drop_hub, D = constants.D)
+    data, X_train, X_test, y_train, y_test = utils.load_data(csv_path,test_size=test_size, drop_hub=drop_hub, D = constants["D"])
     if normaliser is not None:
-        normaliser = getattr(utils, normaliser)
-        # init normaliser
-        Normaliser = normaliser(X_train, y_train, constants)
-        # normalise data
-        X_train, y_train = Normaliser.normalise(X_train, y_train)
-        X_test, y_test = Normaliser.normalise(X_test, y_test)
+        if isinstance(normaliser, str):
+            normaliser = getattr(utils, normaliser)
+            # init normaliser
+            Normaliser = normaliser(X_train, y_train, constants)
+            # normalise data
+            X_train, y_train = Normaliser.normalise(X_train, y_train)
+            X_test, y_test = Normaliser.normalise(X_test, y_test)
+        elif isinstance(normaliser,list):
+            normaliser = [getattr(utils, n) for n in normaliser]
+            Normaliser = []
+            for n in normaliser:
+                # init normaliser
+                Normaliser_ = n(X_train, y_train, constants)
+                # normalise data
+                X_train, y_train = Normaliser_.normalise(X_train, y_train)
+                X_test, y_test = Normaliser_.normalise(X_test, y_test)
+                Normaliser.append(Normaliser_)
+        else:
+            raise ValueError("Normaliser must be a string or a list of strings indicating class names in utils.py")
+        
     train_dataset = utils.dataset(X_train, y_train)
     test_dataset = utils.dataset(X_test, y_test)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=0)
@@ -39,7 +53,7 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
             losses["collocation"].append(loss.item())
             if include_physics:
                 if remove_dimensionality:
-                    physics_loss = utils.non_dimensionalized_physics_informed_loss(batch_X, model, constants, physical_normaliser=Normaliser.physical)
+                    physics_loss = utils.non_dimensionalized_physics_informed_loss(batch_X, model, constants, Normaliser)
                 else:
                     physics_loss = utils.physics_informed_loss(batch_X, model, constants)
                 loss = loss + physics_loss
@@ -66,15 +80,19 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
             outputs = outputs.cpu().detach().numpy()
             y = y.cpu().detach().numpy()
             if normaliser is not None:
-                X, outputs, y = Normaliser.denormalise(X, outputs, y)
+                if isinstance(normaliser,str):
+                    X, outputs, y = Normaliser.denormalise(X, outputs, y)
+                elif isinstance(normaliser,list):
+                    for Normaliser_ in Normaliser:
+                        X, outputs, y = Normaliser_.denormalise(X, outputs, y)
             utils.plot_heatmaps(X, outputs, y, fig_prefix)
             utils.plot_losses(losses, fig_prefix)
 
 if __name__ == '__main__':
     # Load the config file
-    config = OmegaConf.load("config.yaml")
-    data_config = config.data
-    training_config = config.training
+    config = OmegaConf.to_container(OmegaConf.load("config.yaml"))
+    data_config = config["data"]
+    training_config = config["training"]
     # Run the main function
     main(**training_config, **data_config)
 

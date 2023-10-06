@@ -16,7 +16,8 @@
       fig_prefix : "simplenet"
       include_physics : True
       remove_dimensionality : True
-      normaliser : physics_normaliser # one of None, Z_normaliser,min_max_normaliser,physics_normaliser
+      # normaliser : physics_normaliser # one of None, Z_normaliser,min_max_normaliser,physics_normaliser
+      normaliser : [physics_normaliser, min_max_normaliser]
       shuffle : False
       network : simpleNet
     

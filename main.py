@@ -62,7 +62,7 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
         
         if include_physics: 
             losses["physics"].append(physics_loss.item())
-            print('Epoch: {}, Loss: {:.4f}, Physics loss: {:.4f}'.format(epoch+1, loss.item(), physics_loss.item()))
+            print('Epoch: {}, Loss: {:.4f}, Physics loss: {:.8f}'.format(epoch+1, loss.item(), physics_loss.item()))
         else:
             print('Epoch: {}, Loss: {:.4f}'.format(epoch+1, loss.item()))
         

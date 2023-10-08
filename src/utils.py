@@ -28,7 +28,7 @@ def load_data(csv_path,test_size=0.2, random_state=42, drop_hub= True, D = 0):
     if drop_hub:
         df = df.drop(df[(np.sqrt(df['r']**2 + df['z_cyl']**2) <= D)].index)
     X = df[['r', 'z_cyl']].values
-    y = df[['Ux', 'Ur', 'P']].values
+    y = df[['Ur','Ux', 'P']].values #Ux is actually Uz
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
     return df ,X_train, X_test, y_train, y_test
 
@@ -95,58 +95,77 @@ def non_dimensionalized_physics_informed_loss(rz, net, constants,Normaliser):
     P = rho * U_inf*U_inf    # Characteristic pressure
     
     # Non-dimensional parameters
-    nu_star = mu / (rho * U_inf * D)  # Non-dimensional kinematic viscosity
-    nu_t_star = mu_t / (rho * U_inf * D)  # Non-dimensional turbulent kinematic viscosity (eddy viscosity)
+    nu = mu / (rho * U_inf * D)  # Non-dimensional kinematic viscosity
+    nu_t = mu_t / (rho * U_inf * D)  # Non-dimensional turbulent kinematic viscosity (eddy viscosity)
     
     # Non-dimensional coordinates and variables
     if physical_normaliser:
-        rz_star = rz #/ D  # Non-dimensional coordinates
+        rz = rz #/ D  # Non-dimensional coordinates
     else:
-        rz_star = rz / D
-    r_star = rz_star[:, 0]
+        rz = rz / D
+    r = rz[:, 0]
     
     # set up input
-    rz_star.requires_grad = True
-    uvp_star = net(rz_star)  # Non-dimensional velocities and pressure
+    rz.requires_grad = True
+    uvp = net(rz)  # Non-dimensional velocities and pressure
     ###
     # note: this approach assumes that we do physical normalisation first and then the numerical ones (min-max or z-score)
     # remember to raise an error if the order is wrong at the beginning of main()
-    if isinstance(Normaliser,list):
-        for Normaliser_ in Normaliser[::-1]: 
-            if not Normaliser_.physical: 
-                rz_star, uvp_star, _ = Normaliser_.denormalise(rz_star, uvp_star, None)
+    # if isinstance(Normaliser,list):
+    #     for Normaliser_ in Normaliser[::-1]: 
+    #         if not Normaliser_.physical: 
+    #             rz, uvp, _ = Normaliser_.denormalise(rz, uvp, None)
     ###
-    print_graph(uvp_star.grad_fn)
-    print_graph(rz_star.grad_fn)
-    u_r_star = uvp_star[:, 0]
-    u_z_star = uvp_star[:, 1]
+    # print_graph(uvp.grad_fn)
+    # print_graph(rz.grad_fn)
+    u_r = uvp[:, 0]
+    u_z = uvp[:, 1]
     if physical_normaliser:
-        p_star = uvp_star[:, 2]
+        p = uvp[:, 2]
     else:
-        p_star = uvp_star[:, 2] / P  # Non-dimensional pressure
+        p = uvp[:, 2] / P  # Non-dimensional pressure
     # Calculate the gradients
-    du_r_star = torch.autograd.grad(u_r_star, rz_star, grad_outputs=torch.ones_like(u_r_star), create_graph=True)[0]
-    du_r_dr_star, du_r_dz_star = du_r_star[:, 0], du_r_star[:, 1]
-    du_z_star = torch.autograd.grad(u_z_star, rz_star, grad_outputs=torch.ones_like(u_z_star), create_graph=True)[0]
-    du_z_dr_star, du_z_dz_star = du_z_star[:, 0], du_z_star[:, 1]
-    dp_star = torch.autograd.grad(p_star, rz_star, grad_outputs=torch.ones_like(p_star), create_graph=True)[0]
-    dp_dr_star, dp_dz_star = dp_star[:, 0], dp_star[:, 1]
+    du_r = torch.autograd.grad(u_r, rz, grad_outputs=torch.ones_like(u_r), create_graph=True)[0]
+    du_r_dr, du_r_dz = du_r[:, 0], du_r[:, 1]
+    du_z = torch.autograd.grad(u_z, rz, grad_outputs=torch.ones_like(u_z), create_graph=True)[0]
+    du_z_dr, du_z_dz = du_z[:, 0], du_z[:, 1]
+    dp = torch.autograd.grad(p, rz, grad_outputs=torch.ones_like(p), create_graph=True)[0]
+    dp_dr, dp_dz = dp[:, 0], dp[:, 1]
     # second derivatives
-    d2u_r_dr2_star = torch.autograd.grad(du_r_dr_star, rz_star, grad_outputs=torch.ones_like(du_r_dr_star), create_graph=True)[0][:, 0]
-    d2u_r_dz2_star = torch.autograd.grad(du_r_dz_star, rz_star, grad_outputs=torch.ones_like(du_r_dz_star), create_graph=True)[0][:, 1]
-    d2u_z_dr2_star = torch.autograd.grad(du_z_dr_star, rz_star, grad_outputs=torch.ones_like(du_z_dr_star), create_graph=True)[0][:, 0]
-    d2u_z_dz2_star = torch.autograd.grad(du_z_dz_star, rz_star, grad_outputs=torch.ones_like(du_z_dz_star), create_graph=True)[0][:, 1]
+    d2u_r_dr2 = torch.autograd.grad(du_r_dr, rz, grad_outputs=torch.ones_like(du_r_dr), create_graph=True)[0][:, 0]
+    d2u_r_dz2 = torch.autograd.grad(du_r_dz, rz, grad_outputs=torch.ones_like(du_r_dz), create_graph=True)[0][:, 1]
+    d2u_z_dr2 = torch.autograd.grad(du_z_dr, rz, grad_outputs=torch.ones_like(du_z_dr), create_graph=True)[0][:, 0]
+    d2u_z_dz2 = torch.autograd.grad(du_z_dz, rz, grad_outputs=torch.ones_like(du_z_dz), create_graph=True)[0][:, 1]
     # Mass conservation equation in non-dimensional form
-    mass_conservation = du_r_dr_star + u_r_star / r_star + du_z_dz_star
-    # r-momentum and z-momentum equations in non-dimensional form
-    r_momentum = u_r_star * du_r_dr_star + u_z_star * du_r_dz_star + dp_dr_star - \
-                 (nu_star + nu_t_star) * (1 / r_star * du_r_dr_star + d2u_r_dr2_star + d2u_r_dz2_star - u_r_star / r_star**2)
-                 
-    z_momentum = u_r_star * du_z_dr_star + u_z_star * du_z_dz_star + dp_dz_star - \
-                 (nu_star + nu_t_star) * (1 / r_star * du_z_dr_star + d2u_z_dr2_star + d2u_z_dz2_star)
+    # mass_conservation = du_r_dr + u_r / r + du_z_dz
+    n = Normaliser[-1]
+    t1 = n.denorm_u_r(u_r)/n.denorm_r(r) # u_r / r
+    t2 = du_r_dr / (n.dUrtdUr() * n.drdrt()) # du_r_dr
+    t3 = du_z_dz / (n.dUztdUz() * n.dzdzt()) # du_z_dz
+    mass_conservation = t1 + t2 + t3
+    # # r-momentum and z-momentum equations in non-dimensional form
+    # r_momentum = u_r * du_r_dr + u_z * du_r_dz + dp_dr - \
+    #              (nu + nu_t) * (1 / r * du_r_dr + d2u_r_dr2 + d2u_r_dz2 - u_r / r**2)
+    # second derivatives:
+    d2u_r_dz2_ = d2u_r_dz2/ (n.dUrtdUr() * n.dzdzt()**2)
+    d2u_r_dr2_ = d2u_r_dr2/ (n.dUrtdUr() * n.drdrt()**2)
+    d2u_z_dz2_ = d2u_z_dz2/ (n.dUztdUz() * n.dzdzt()**2)
+    d2u_z_dr2_ = d2u_z_dr2/ (n.dUztdUz() * n.drdrt()**2)
+
+    r_momentum = n.denorm_u_r(u_r) * du_r_dr / (n.dUrtdUr() * n.drdrt()) + \
+                n.denorm_u_z(u_z) * du_r_dz / (n.dUrtdUr() * n.dzdzt()) + \
+                dp_dr / (n.dPtdP() * n.drdrt()) - (nu + nu_t) * (1 / n.denorm_r(r) * du_r_dr / (n.dUrtdUr() * n.drdrt()) + d2u_r_dr2_ + d2u_r_dz2_ - n.denorm_u_r(u_r) / n.denorm_r(r)**2)
     
-    # Return the non-dimensionalized loss
+    # z_momentum = u_r * du_z_dr + u_z * du_z_dz + dp_dz - \
+    #              (nu + nu_t) * (1 / r * du_z_dr + d2u_z_dr2_ + d2u_z_dz2_)
+    z_momentum = n.denorm_u_r(u_r) * du_z_dr / (n.dUztdUz() * n.drdrt()) + \
+                n.denorm_u_z(u_z) * du_z_dz / (n.dUztdUz() * n.dzdzt()) + \
+                dp_dz / (n.dPtdP() * n.dzdzt()) - (nu + nu_t) * (1 / n.denorm_r(r) * du_z_dr / (n.dUztdUz() * n.drdrt()) + d2u_z_dr2_ + d2u_z_dz2_)
+    
+    # # Return the non-dimensionalized loss
     loss = torch.mean(mass_conservation**2 + r_momentum**2 + z_momentum**2)
+    # return loss
+    # loss = torch.mean(mass_conservation**2)
     return loss
 
 
@@ -168,109 +187,6 @@ def plot_losses(losses, fig_prefix):
     plt.savefig(f"Figures/{fig_prefix}_losses.pdf")
     plt.show()
 
-
-def plot(X, outputs, y, fig_prefix=""):
-    fig = plt.figure(figsize=(15, 5))
-    # Plot for U
-    ax1 = fig.add_subplot(131)
-    sc1 = ax1.scatter(X[:, 0], X[:, 1], c=outputs[:, 0], cmap='viridis')
-    ax1.set_title('U')
-    ax1.set_xlabel('x')
-    ax1.set_ylabel('y')
-    cbar1 = fig.colorbar(sc1, ax=ax1)
-    cbar1.set_label('U values')
-
-    # Plot for V
-    ax2 = fig.add_subplot(132)
-    sc2 = ax2.scatter(X[:, 0], X[:, 1], c=outputs[:, 1], cmap='plasma')
-    ax2.set_title('V')
-    ax2.set_xlabel('x')
-    ax2.set_ylabel('y')
-    cbar2 = fig.colorbar(sc2, ax=ax2)
-    cbar2.set_label('V values')
-
-    # Plot for P
-    ax3 = fig.add_subplot(133)
-    sc3 = ax3.scatter(X[:, 0], X[:, 1], c=outputs[:, 2], cmap='inferno')
-    ax3.set_title('P')
-    ax3.set_xlabel('x')
-    ax3.set_ylabel('y')
-    cbar3 = fig.colorbar(sc3, ax=ax3)
-    cbar3.set_label('P values')
-    # Adjust layout
-    plt.tight_layout()
-    plt.savefig(f"Figures/{fig_prefix}_2d_cart_NN.pdf")
-    plt.show()
-
-    # plot the actual values
-    fig = plt.figure(figsize=(15, 5))
-    # Plot for U
-    ax1 = fig.add_subplot(131)
-    sc1 = ax1.scatter(X[:, 0], X[:, 1], c=y[:, 0], cmap='viridis')
-    ax1.set_title('U')
-    ax1.set_xlabel('x')
-    ax1.set_ylabel('y')
-    cbar1 = fig.colorbar(sc1, ax=ax1)
-    cbar1.set_label('U values')
-
-    # Plot for V
-    ax2 = fig.add_subplot(132)  
-    sc2 = ax2.scatter(X[:, 0], X[:, 1], c=y[:, 1], cmap='plasma')
-    ax2.set_title('V')
-    ax2.set_xlabel('x')
-    ax2.set_ylabel('y')
-    cbar2 = fig.colorbar(sc2, ax=ax2)
-    cbar2.set_label('V values')
-
-    # Plot for P
-    ax3 = fig.add_subplot(133)
-    sc3 = ax3.scatter(X[:, 0], X[:, 1], c=y[:, 2], cmap='inferno')
-    ax3.set_title('P')
-    ax3.set_xlabel('x')
-    ax3.set_ylabel('y')
-    cbar3 = fig.colorbar(sc3, ax=ax3)
-    cbar3.set_label('P values')
-    # Adjust layout
-    plt.tight_layout()
-    plt.savefig(f"Figures/{fig_prefix}_2d_cart_actual.pdf")
-    plt.show()
-
-
-    # plot error
-    error = np.abs(y - outputs)
-    fig = plt.figure(figsize=(15, 5))
-    # Plot for U
-    ax1 = fig.add_subplot(131)
-    sc1 = ax1.scatter(X[:, 0], X[:, 1], c=error[:, 0], cmap='viridis')
-    ax1.set_title('U')
-    ax1.set_xlabel('x')
-    ax1.set_ylabel('y')
-    cbar1 = fig.colorbar(sc1, ax=ax1)
-    cbar1.set_label('U values')
-
-    # Plot for V
-    ax2 = fig.add_subplot(132)
-    sc2 = ax2.scatter(X[:, 0], X[:, 1], c=error[:, 1], cmap='plasma')
-    ax2.set_title('V')
-    ax2.set_xlabel('x')
-    ax2.set_ylabel('y')
-    cbar2 = fig.colorbar(sc2, ax=ax2)
-    cbar2.set_label('V values')
-
-    # Plot for P
-    ax3 = fig.add_subplot(133)
-    sc3 = ax3.scatter(X[:, 0], X[:, 1], c=error[:, 2], cmap='inferno')
-    ax3.set_title('P')
-    ax3.set_xlabel('x')
-    ax3.set_ylabel('y')
-    cbar3 = fig.colorbar(sc3, ax=ax3)
-    cbar3.set_label('P values')
-    # Adjust layout
-    plt.tight_layout()
-    plt.savefig(f"Figures/{fig_prefix}_2d_cart_error.pdf")
-    plt.show()
-
-
 def plot_heatmaps(X, outputs, y, fig_prefix=""):
 
     def plot_single_heatmap(r, z, values, ax, cmap, cbar_label):
@@ -287,12 +203,12 @@ def plot_heatmaps(X, outputs, y, fig_prefix=""):
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
         
         # Plot U
-        plot_single_heatmap(X[:, 0], X[:, 1], data[:, 0], ax1, 'jet', 'U values')
-        ax1.set_title('U')
+        plot_single_heatmap(X[:, 0], X[:, 1], data[:, 0], ax1, 'jet', 'U_r values')
+        ax1.set_title('U_r')
         
         # Plot V
-        plot_single_heatmap(X[:, 0], X[:, 1], data[:, 1], ax2, 'jet', 'V values')
-        ax2.set_title('V')
+        plot_single_heatmap(X[:, 0], X[:, 1], data[:, 1], ax2, 'jet', 'U_z values')
+        ax2.set_title('U_z')
         
         # Plot P
         plot_single_heatmap(X[:, 0], X[:, 1], data[:, 2], ax3, 'jet', 'P values')

@@ -57,6 +57,38 @@ class min_max_normaliser():
         else:
             y_ = None
         return X_, outputs_, y_
+    def denorm_u_r(self, u_r):
+        max_ = self.max_y[0]
+        min_ = self.min_y[0]
+        return u_r * (max_ - min_) + min_
+    def denorm_r(self, r):
+        max_ = self.max[0]
+        min_ = self.min[0]
+        return r * (max_ - min_) + min_
+    def dUrtdUr(self):
+        max_ = self.max_y[0]
+        min_ = self.min_y[0]
+        return 1/ (max_ - min_)
+    def dUztdUz(self):
+        max_ = self.max_y[1]
+        min_ = self.min_y[1]
+        return 1/ (max_ - min_)
+    def drdrt(self):
+        max_ = self.max[0]
+        min_ = self.min[0]
+        return (max_ - min_)
+    def dzdzt(self):
+        max_ = self.max[1]
+        min_ = self.min[1]
+        return (max_ - min_)
+    def denorm_u_z(self, u_z):
+        max_ = self.max_y[1]
+        min_ = self.min_y[1]
+        return u_z * (max_ - min_) + min_
+    def dPtdP(self):
+        max_ = self.max_y[2]
+        min_ = self.min_y[2]
+        return 1/ (max_ - min_)
         
 class physics_normaliser():
     def __init__(self,X,y,constants):

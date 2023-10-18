@@ -10,7 +10,8 @@ class Z_normaliser():
         self.physical = False
     def normalise(self, X,y):
         X = (X - self.mean) / self.std
-        y = (y - self.mean_y) / self.std_y
+        if y is not None:
+            y = (y - self.mean_y) / self.std_y
         return X,y
     def denormalise(self, X,outputs,y):
         if isinstance(X,torch.Tensor):
@@ -27,7 +28,37 @@ class Z_normaliser():
         outputs = outputs * std_y + mean_y
         if y is not None:
             y = y * std_y + mean_y
+        else:
+            y = None
         return X, outputs, y
+    def denorm_u_r(self, u_r):
+        std_y = self.std_y[0]
+        mean_y = self.mean_y[0]
+        return u_r * std_y + mean_y
+    def denorm_r(self, r):
+        std = self.std[0]
+        mean = self.mean[0]
+        return r * std + mean
+    def dUrtdUr(self):
+        std_y = self.std_y[0]
+        return 1/ std_y
+    def dUztdUz(self):
+        std_y = self.std_y[1]
+        return 1/ std_y
+    def drdrt(self):
+        std = self.std[0]
+        return std
+    def dzdzt(self):
+        std = self.std[1]
+        return std
+    def denorm_u_z(self, u_z):
+        std_y = self.std_y[1]
+        mean_y = self.mean_y[1]
+        return u_z * std_y + mean_y
+    def dPtdP(self):
+        std_y = self.std_y[2]
+        return 1/ std_y
+    
 class min_max_normaliser():
     def __init__(self, X, y,constants):
         self.min = np.min(X, axis=0)
@@ -37,7 +68,8 @@ class min_max_normaliser():
         self.physical = False
     def normalise(self, X,y):
         X = (X - self.min) / (self.max - self.min)
-        y = (y - self.min_y) / (self.max_y - self.min_y)
+        if y is not None:
+            y = (y - self.min_y) / (self.max_y - self.min_y)
         return X,y
     def denormalise(self, X,outputs,y):
         if isinstance(X,torch.Tensor):
@@ -98,11 +130,14 @@ class physics_normaliser():
         X = X / self.constants["D"]
         rho = self.constants["rho"]
         U_inf = self.constants["U_inf"]
-        uv = y[:,0:2]
-        p = y[:,2].reshape(-1,1)
-        uv = uv / U_inf
-        p = p / (rho * U_inf**2)
-        return X, np.concatenate((uv,p),axis=1)
+        if y is not None:
+            uv = y[:,0:2]
+            p = y[:,2].reshape(-1,1)
+            uv = uv / U_inf
+            p = p / (rho * U_inf**2)
+            return X, np.concatenate((uv,p),axis=1)
+        else:
+            return X, None
     
     def denormalise(self, X,outputs,y):
         # X

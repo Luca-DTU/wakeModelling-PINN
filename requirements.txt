@@ -1,0 +1,12 @@
+matplotlib==3.5.2
+numpy==1.23.1
+omegaconf==2.3.0
+pandas==1.4.3
+pytest==7.4.2
+scikit_learn==1.3.1
+seaborn==0.11.2
+setuptools==58.1.0
+softadapt==0.0.5
+torch==2.1.0
+xarray==2023.8.0
+# pip install git+https://github.com/dr-aheydari/SoftAdapt.git

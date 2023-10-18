@@ -30,7 +30,13 @@ def load_data(csv_path,test_size=0.2, random_state=42, drop_hub= True, D = 0):
     X = df[['r', 'z_cyl']].values
     y = df[['Ur','Ux', 'P']].values #Ux is actually Uz
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
-    return df ,X_train, X_test, y_train, y_test
+    X_phys = X[np.where((X[:,0] < 800) & (abs(X[:,1]) < 1500))]# X[::10]
+    # X_phys = X_phys[::5]
+    # plt.scatter(X_train[:,0], X_train[:,1], s=0.1)
+    # plt.scatter(X_phys[:,0], X_phys[:,1], s=0.1)
+    X_test = X
+    y_test = y
+    return X_phys,X_train, X_test, y_train, y_test
 
 
 def physics_informed_loss(rz, net, constants):
@@ -81,23 +87,19 @@ def print_graph(g, indent=''):
             print_graph(next_g[0], indent + '  ')
 
 def non_dimensionalized_physics_informed_loss(rz, net, constants,Normaliser):
-    if isinstance(Normaliser,str):
-        physical_normaliser = Normaliser.physical
-    elif isinstance(Normaliser,list):
-        physical_normaliser = any([Normaliser_.physical for Normaliser_ in Normaliser])
-    # Given values and characteristic scales
+    physical_normaliser = any([Normaliser_.physical for Normaliser_ in Normaliser])
     rho = constants["rho"]
     mu = constants["mu"]
-    mu_t = constants["mu_t"]
-    
+    mu_t = constants["mu_t"]    
     U_inf = constants["U_inf"]  # Characteristic velocity
     D = constants["D"]        # Characteristic length
     P = rho * U_inf*U_inf    # Characteristic pressure
-    
+    # dimensional parameters
+    # nu = mu / rho  # kinematic viscosity
+    # nu_t = nu + mu_t / rho  # turbulent kinematic viscosity (eddy viscosity)
     # Non-dimensional parameters
     nu = mu / (rho * U_inf * D)  # Non-dimensional kinematic viscosity
     nu_t = mu_t / (rho * U_inf * D)  # Non-dimensional turbulent kinematic viscosity (eddy viscosity)
-    
     # Non-dimensional coordinates and variables
     if physical_normaliser:
         rz = rz #/ D  # Non-dimensional coordinates
@@ -109,15 +111,6 @@ def non_dimensionalized_physics_informed_loss(rz, net, constants,Normaliser):
     rz.requires_grad = True
     uvp = net(rz)  # Non-dimensional velocities and pressure
     ###
-    # note: this approach assumes that we do physical normalisation first and then the numerical ones (min-max or z-score)
-    # remember to raise an error if the order is wrong at the beginning of main()
-    # if isinstance(Normaliser,list):
-    #     for Normaliser_ in Normaliser[::-1]: 
-    #         if not Normaliser_.physical: 
-    #             rz, uvp, _ = Normaliser_.denormalise(rz, uvp, None)
-    ###
-    # print_graph(uvp.grad_fn)
-    # print_graph(rz.grad_fn)
     u_r = uvp[:, 0]
     u_z = uvp[:, 1]
     if physical_normaliser:
@@ -172,8 +165,8 @@ def non_dimensionalized_physics_informed_loss(rz, net, constants,Normaliser):
 def plot_losses(losses, fig_prefix):
     fig = plt.figure(figsize=(15, 5))
     ax1 = fig.add_subplot(121)
-    ax1.plot(losses["collocation"])
-    ax1.set_title("Collocation loss")
+    ax1.plot(losses["data"])
+    ax1.set_title("data loss")
     ax1.set_xlabel("Epoch")
     ax1.set_ylabel("Loss")
     ax1.set_yscale("log")
@@ -199,28 +192,27 @@ def plot_heatmaps(X, outputs, y, fig_prefix=""):
         ax.set_xlabel('z')
         ax.set_ylabel('r')
 
-    def plot_all(title, data, file_suffix):
-        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
+    def plot_all(X, outputs, y, file_suffix):
+        fig, axs = plt.subplots(3, 3, figsize=(15, 15))  # Changed to 3x3 grid
         
-        # Plot U
-        plot_single_heatmap(X[:, 0], X[:, 1], data[:, 0], ax1, 'jet', 'U_r values')
-        ax1.set_title('U_r')
+        titles = ['Predicted', 'Actual', 'Error']
+        data = [outputs, y, np.abs(y - outputs)]
         
-        # Plot V
-        plot_single_heatmap(X[:, 0], X[:, 1], data[:, 1], ax2, 'jet', 'U_z values')
-        ax2.set_title('U_z')
-        
-        # Plot P
-        plot_single_heatmap(X[:, 0], X[:, 1], data[:, 2], ax3, 'jet', 'P values')
-        ax3.set_title('P')
+        for i, (title, dat) in enumerate(zip(titles, data)):
+            # Plot U
+            plot_single_heatmap(X[:, 0], X[:, 1], dat[:, 0], axs[i, 0], 'jet', 'U_r values')
+            axs[i, 0].set_title(f'{title} U_r')
+            
+            # Plot V
+            plot_single_heatmap(X[:, 0], X[:, 1], dat[:, 1], axs[i, 1], 'jet', 'U_z values')
+            axs[i, 1].set_title(f'{title} U_z')
+            
+            # Plot P
+            plot_single_heatmap(X[:, 0], X[:, 1], dat[:, 2], axs[i, 2], 'jet', 'P values')
+            axs[i, 2].set_title(f'{title} P')
 
         # Adjust layout and save
         plt.tight_layout()
-        plt.suptitle(title, y=1.05)
-        plt.savefig(f"Figures/{fig_prefix}_2d_cart_{file_suffix}.pdf")
+        plt.savefig(f"Figures/{file_suffix}.pdf")  # Changed file name structure for simplification
         plt.show()
-
-    # Plot everything
-    plot_all("Predicted", outputs, "NN")
-    plot_all("Actual", y, "actual")
-    plot_all("Error", np.abs(y - outputs), "error")
+    plot_all(X, outputs, y, "combined")

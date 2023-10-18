@@ -10,14 +10,16 @@
 
     training:
       learning_rate : 0.0001
-      num_epochs : 10000
-      batch_size : 1000
-      test_size : 0.99
+      num_epochs : 1000
+      batch_size : -1
+      test_size : 0.9
       fig_prefix : "simplenet"
       include_physics : True
       remove_dimensionality : True
-      # normaliser : physics_normaliser # one of None, Z_normaliser,min_max_normaliser,physics_normaliser
       normaliser : [physics_normaliser, min_max_normaliser]
       shuffle : False
       network : simpleNet
+      adaptive_loss_weights : True
+      epochs_to_make_updates : 10
+      start_adapting_at_epoch : 500
     

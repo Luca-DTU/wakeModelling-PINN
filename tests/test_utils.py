@@ -38,7 +38,7 @@ def test_physics_informed_loss():
     assert loss.item() >= 0.0
 
 def test_plot_losses():
-    losses = {"collocation": [0.1, 0.05, 0.01], "physics": [0.2, 0.1, 0.05]}
+    losses = {"data": [0.1, 0.05, 0.01], "physics": [0.2, 0.1, 0.05]}
     fig_prefix = "test"
     plot_losses(losses, fig_prefix)
 

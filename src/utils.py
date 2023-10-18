@@ -30,52 +30,14 @@ def load_data(csv_path,test_size=0.2, random_state=42, drop_hub= True, D = 0):
     X = df[['r', 'z_cyl']].values
     y = df[['Ur','Ux', 'P']].values #Ux is actually Uz
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
-    X_phys = X[np.where((X[:,0] < 800) & (abs(X[:,1]) < 1500))]# X[::10]
+    # X_phys = X[np.where((X[:,0] < 800) & (abs(X[:,1]) < 1500))]# X[::10]
+    X_phys = X
     # X_phys = X_phys[::5]
     # plt.scatter(X_train[:,0], X_train[:,1], s=0.1)
     # plt.scatter(X_phys[:,0], X_phys[:,1], s=0.1)
     X_test = X
     y_test = y
     return X_phys,X_train, X_test, y_train, y_test
-
-
-def physics_informed_loss(rz, net, constants):
-    # Given values
-    rho = constants["rho"]
-    mu = constants["mu"]
-    mu_t = constants["mu_t"]
-    nu = mu / rho  # kinematic viscosity
-    nu_total = nu + mu_t / rho  # total kinematic viscosity (laminar + turbulent)
-    r = rz[:, 0]
-    # set up input
-    rz.requires_grad = True
-    uvp = net(rz)
-    u_r = uvp[:, 0]
-    u_z = uvp[:, 1]
-    p = uvp[:, 2]
-    # Calculate the gradients
-    du_r = torch.autograd.grad(u_r, rz, grad_outputs=torch.ones_like(u_r), create_graph=True)[0]
-    du_rdr,du_rdz = du_r[:, 0], du_r[:, 1]
-    du_z = torch.autograd.grad(u_z, rz, grad_outputs=torch.ones_like(u_z), create_graph=True)[0]
-    du_zdr,du_zdz = du_z[:, 0], du_z[:, 1]
-    dp = torch.autograd.grad(p, rz, grad_outputs=torch.ones_like(p), create_graph=True)[0]
-    dpdr,dpdz = dp[:, 0], dp[:, 1]
-    # second derivatives
-    d2u_rdr2 = torch.autograd.grad(du_rdr, rz, grad_outputs=torch.ones_like(du_rdr), create_graph=True)[0][:, 0]
-    d2u_rdz2 = torch.autograd.grad(du_rdz, rz, grad_outputs=torch.ones_like(du_rdz), create_graph=True)[0][:, 1]
-    d2u_zdr2 = torch.autograd.grad(du_zdr, rz, grad_outputs=torch.ones_like(du_zdr), create_graph=True)[0][:, 0]
-    d2u_zdz2 = torch.autograd.grad(du_zdz, rz, grad_outputs=torch.ones_like(du_zdz), create_graph=True)[0][:, 1]
-    # mass conservation 1/r d(ru_r)/dr + du_z/dz = 0 => du_r/dr + u_r/r + du_z/dz +  = 0
-    mass_conservation = du_rdr + u_r/r + du_zdz
-    # r-momentum conservation u_r du_r/dr + u_z du_r/dz + 1/rho dp/dr - nu_total (1/r du_r/dr + d2u_r/dr2 + d2u_r/dz2 - u_r/r^2) = 0
-    # z-momentum conservation u_r du_z/dr + u_z du_z/dz + 1/rho dp/dz - nu_total (1/r du_z/dr + d2u_z/dr2 + d2u_z/dz2) = 0
-    # r-momentum
-    r_momentum = u_r*du_rdr + u_z*du_rdz + 1/rho*dpdr - nu_total*(1/r*du_rdr + d2u_rdr2 + d2u_rdz2 - u_r/r**2)
-    # z-momentum
-    z_momentum = u_r*du_zdr + u_z*du_zdz + 1/rho*dpdz - nu_total*(1/r*du_zdr + d2u_zdr2 + d2u_zdz2)
-    # return the loss
-    loss = torch.mean(mass_conservation**2 + r_momentum**2 + z_momentum**2)
-    return loss
 
 def print_graph(g, indent=''):
     """Prints the computation graph"""
@@ -86,79 +48,131 @@ def print_graph(g, indent=''):
         if next_g[0] is not None:
             print_graph(next_g[0], indent + '  ')
 
-def non_dimensionalized_physics_informed_loss(rz, net, constants,Normaliser):
-    physical_normaliser = any([Normaliser_.physical for Normaliser_ in Normaliser])
+def physics_informed_loss(rz, net, constants,Normaliser):
+    """
+    Compute the physics-informed loss for a neural network.
+
+    If there has been physical normalisation, then then the data is non-dimensionalized
+    and the loss function is non-dimensionalized. 
+    
+    If there has been no physical normalisation,
+    then the data is still dimensionalized and the loss function is also dimensionalized.
+    Args:
+        rz (torch.Tensor): Input tensor containing (r, z) coordinates.
+        net: The neural network model.
+        constants (dict): Dictionary of physical constants.
+        Normaliser (list): List of normalizers.
+
+    Returns:
+        torch.Tensor: The physics-informed loss.
+    """
+    # unpack constants
     rho = constants["rho"]
     mu = constants["mu"]
     mu_t = constants["mu_t"]    
     U_inf = constants["U_inf"]  # Characteristic velocity
     D = constants["D"]        # Characteristic length
     P = rho * U_inf*U_inf    # Characteristic pressure
-    # dimensional parameters
-    # nu = mu / rho  # kinematic viscosity
-    # nu_t = nu + mu_t / rho  # turbulent kinematic viscosity (eddy viscosity)
-    # Non-dimensional parameters
-    nu = mu / (rho * U_inf * D)  # Non-dimensional kinematic viscosity
-    nu_t = mu_t / (rho * U_inf * D)  # Non-dimensional turbulent kinematic viscosity (eddy viscosity)
-    # Non-dimensional coordinates and variables
+    # check if physical normalisation has been applied (i.e. de-dimensionalisation)
+    physical_normaliser = any([Normaliser_.physical for Normaliser_ in Normaliser])
+    len_normaliser = len(Normaliser)
+
     if physical_normaliser:
         rz = rz #/ D  # Non-dimensional coordinates
+        nu = mu / (rho * U_inf * D)  # Non-dimensional kinematic viscosity
+        nu_t = mu_t / (rho * U_inf * D)  # Non-dimensional turbulent kinematic viscosity (eddy viscosity)
     else:
-        rz = rz / D
+        nu = mu / rho  # kinematic viscosity
+        nu_t = mu_t / rho  # turbulent kinematic viscosity (eddy viscosity)
+
     r = rz[:, 0]
-    
-    # set up input
     rz.requires_grad = True
     uvp = net(rz)  # Non-dimensional velocities and pressure
-    ###
+
+    # unpack predicted values    
     u_r = uvp[:, 0]
     u_z = uvp[:, 1]
-    if physical_normaliser:
-        p = uvp[:, 2]
-    else:
-        p = uvp[:, 2] / P  # Non-dimensional pressure
+    p = uvp[:, 2] # / P
+
+    # Calculate derivatives and second derivatives using functions
+    def calc_derivative(func, var):
+        return torch.autograd.grad(func, var, grad_outputs=torch.ones_like(func), create_graph=True)[0]
+
     # Calculate the gradients
-    du_r = torch.autograd.grad(u_r, rz, grad_outputs=torch.ones_like(u_r), create_graph=True)[0]
+    du_r = calc_derivative(u_r, rz)
     du_r_dr, du_r_dz = du_r[:, 0], du_r[:, 1]
-    du_z = torch.autograd.grad(u_z, rz, grad_outputs=torch.ones_like(u_z), create_graph=True)[0]
+    du_z = calc_derivative(u_z, rz)
     du_z_dr, du_z_dz = du_z[:, 0], du_z[:, 1]
-    dp = torch.autograd.grad(p, rz, grad_outputs=torch.ones_like(p), create_graph=True)[0]
+    dp = calc_derivative(p, rz)
     dp_dr, dp_dz = dp[:, 0], dp[:, 1]
     # second derivatives
-    d2u_r_dr2 = torch.autograd.grad(du_r_dr, rz, grad_outputs=torch.ones_like(du_r_dr), create_graph=True)[0][:, 0]
-    d2u_r_dz2 = torch.autograd.grad(du_r_dz, rz, grad_outputs=torch.ones_like(du_r_dz), create_graph=True)[0][:, 1]
-    d2u_z_dr2 = torch.autograd.grad(du_z_dr, rz, grad_outputs=torch.ones_like(du_z_dr), create_graph=True)[0][:, 0]
-    d2u_z_dz2 = torch.autograd.grad(du_z_dz, rz, grad_outputs=torch.ones_like(du_z_dz), create_graph=True)[0][:, 1]
-    # Mass conservation equation in non-dimensional form
-    # mass_conservation = du_r_dr + u_r / r + du_z_dz
-    n = Normaliser[-1]
-    t1 = n.denorm_u_r(u_r)/n.denorm_r(r) # u_r / r
-    t2 = du_r_dr / (n.dUrtdUr() * n.drdrt()) # du_r_dr
-    t3 = du_z_dz / (n.dUztdUz() * n.dzdzt()) # du_z_dz
-    mass_conservation = t1 + t2 + t3
-    # # r-momentum and z-momentum equations in non-dimensional form
-    # r_momentum = u_r * du_r_dr + u_z * du_r_dz + dp_dr - \
-    #              (nu + nu_t) * (1 / r * du_r_dr + d2u_r_dr2 + d2u_r_dz2 - u_r / r**2)
-    # second derivatives:
-    d2u_r_dz2_ = d2u_r_dz2/ (n.dUrtdUr() * n.dzdzt()**2)
-    d2u_r_dr2_ = d2u_r_dr2/ (n.dUrtdUr() * n.drdrt()**2)
-    d2u_z_dz2_ = d2u_z_dz2/ (n.dUztdUz() * n.dzdzt()**2)
-    d2u_z_dr2_ = d2u_z_dr2/ (n.dUztdUz() * n.drdrt()**2)
+    d2u_r_dr2 = calc_derivative(du_r_dr, rz)[:, 0]
+    d2u_r_dz2 = calc_derivative(du_r_dz, rz)[:, 1]
+    d2u_z_dr2 = calc_derivative(du_z_dr, rz)[:, 0]
+    d2u_z_dz2 = calc_derivative(du_z_dz, rz)[:, 1]
 
-    r_momentum = n.denorm_u_r(u_r) * du_r_dr / (n.dUrtdUr() * n.drdrt()) + \
-                n.denorm_u_z(u_z) * du_r_dz / (n.dUrtdUr() * n.dzdzt()) + \
-                dp_dr / (n.dPtdP() * n.drdrt()) - (nu + nu_t) * (1 / n.denorm_r(r) * du_r_dr / (n.dUrtdUr() * n.drdrt()) + d2u_r_dr2_ + d2u_r_dz2_ - n.denorm_u_r(u_r) / n.denorm_r(r)**2)
-    
-    # z_momentum = u_r * du_z_dr + u_z * du_z_dz + dp_dz - \
-    #              (nu + nu_t) * (1 / r * du_z_dr + d2u_z_dr2_ + d2u_z_dz2_)
-    z_momentum = n.denorm_u_r(u_r) * du_z_dr / (n.dUztdUz() * n.drdrt()) + \
-                n.denorm_u_z(u_z) * du_z_dz / (n.dUztdUz() * n.dzdzt()) + \
-                dp_dz / (n.dPtdP() * n.dzdzt()) - (nu + nu_t) * (1 / n.denorm_r(r) * du_z_dr / (n.dUztdUz() * n.drdrt()) + d2u_z_dr2_ + d2u_z_dz2_)
-    
-    # # Return the non-dimensionalized loss
-    loss = torch.mean(mass_conservation**2 + r_momentum**2 + z_momentum**2)
-    # return loss
-    # loss = torch.mean(mass_conservation**2)
+    match (physical_normaliser, len_normaliser):
+        case (False, 0):
+            # Dimensional - No normalisation 
+            mass_conservation = du_r_dr + u_r/r + du_z_dz
+            # r-momentum
+            r_momentum = u_r*du_r_dr + u_z*du_r_dz + 1/rho*dp_dr - (nu + nu_t)*(1/r*du_r_dr + d2u_r_dr2 + d2u_r_dz2 - u_r/r**2)
+            # z-momentum
+            z_momentum = u_r*du_z_dr + u_z*du_z_dz + 1/rho*dp_dz - (nu + nu_t)*(1/r*du_z_dr + d2u_z_dr2 + d2u_z_dz2)
+            # return the loss
+            loss = torch.mean(mass_conservation**2 + r_momentum**2 + z_momentum**2)
+        case (True, 1):
+            # Non-dimensional - no additional normalisation
+            mass_conservation = du_r_dr + u_r / r + du_z_dz
+            # # r-momentum and z-momentum equations in non-dimensional form
+            r_momentum = u_r * du_r_dr + u_z * du_r_dz + dp_dr - \
+                         (nu + nu_t) * (1 / r * du_r_dr + d2u_r_dr2 + d2u_r_dz2 - u_r / r**2)
+            z_momentum = u_r * du_z_dr + u_z * du_z_dz + dp_dz - \
+                         (nu + nu_t) * (1 / r * du_z_dr + d2u_z_dr2 + d2u_z_dz2)
+            loss = torch.mean(mass_conservation**2 + r_momentum**2 + z_momentum**2)
+        case (True, 2):
+            # Non-dimensional - additional normalisation
+            n = Normaliser[-1]
+            term_1 = n.denorm_u_r(u_r)/n.denorm_r(r) # u_r / r
+            term_2 = du_r_dr / (n.dUrtdUr() * n.drdrt()) # du_r_dr
+            term_3 = du_z_dz / (n.dUztdUz() * n.dzdzt()) # du_z_dz
+            mass_conservation = term_1 + term_2 + term_3
+            # second derivatives:
+            d2u_r_dz2_ = d2u_r_dz2/ (n.dUrtdUr() * n.dzdzt()**2)
+            d2u_r_dr2_ = d2u_r_dr2/ (n.dUrtdUr() * n.drdrt()**2)
+            d2u_z_dz2_ = d2u_z_dz2/ (n.dUztdUz() * n.dzdzt()**2)
+            d2u_z_dr2_ = d2u_z_dr2/ (n.dUztdUz() * n.drdrt()**2)
+
+            r_momentum = n.denorm_u_r(u_r) * du_r_dr / (n.dUrtdUr() * n.drdrt()) + \
+                        n.denorm_u_z(u_z) * du_r_dz / (n.dUrtdUr() * n.dzdzt()) + \
+                        dp_dr / (n.dPtdP() * n.drdrt()) - (nu + nu_t) * (1 / n.denorm_r(r) * du_r_dr / (n.dUrtdUr() * n.drdrt()) + d2u_r_dr2_ + d2u_r_dz2_ - n.denorm_u_r(u_r) / n.denorm_r(r)**2)
+
+            z_momentum = n.denorm_u_r(u_r) * du_z_dr / (n.dUztdUz() * n.drdrt()) + \
+                        n.denorm_u_z(u_z) * du_z_dz / (n.dUztdUz() * n.dzdzt()) + \
+                        dp_dz / (n.dPtdP() * n.dzdzt()) - (nu + nu_t) * (1 / n.denorm_r(r) * du_z_dr / (n.dUztdUz() * n.drdrt()) + d2u_z_dr2_ + d2u_z_dz2_)
+            
+            loss = torch.mean(mass_conservation**2 + r_momentum**2 + z_momentum**2)
+        case (False, 1):
+            # Dimensional - additional normalisation
+            n = Normaliser[-1]
+            term_1 = n.denorm_u_r(u_r)/n.denorm_r(r) # u_r / r
+            term_2 = du_r_dr / (n.dUrtdUr() * n.drdrt()) # du_r_dr
+            term_3 = du_z_dz / (n.dUztdUz() * n.dzdzt()) # du_z_dz
+            mass_conservation = term_1 + term_2 + term_3
+            # second derivatives:
+            d2u_r_dz2_ = d2u_r_dz2/ (n.dUrtdUr() * n.dzdzt()**2)
+            d2u_r_dr2_ = d2u_r_dr2/ (n.dUrtdUr() * n.drdrt()**2)
+            d2u_z_dz2_ = d2u_z_dz2/ (n.dUztdUz() * n.dzdzt()**2)
+            d2u_z_dr2_ = d2u_z_dr2/ (n.dUztdUz() * n.drdrt()**2)
+
+            r_momentum = n.denorm_u_r(u_r) * du_r_dr / (n.dUrtdUr() * n.drdrt()) + \
+                        n.denorm_u_z(u_z) * du_r_dz / (n.dUrtdUr() * n.dzdzt()) + \
+                        dp_dr / (n.dPtdP() * n.drdrt())*1/rho - (nu + nu_t) * (1 / n.denorm_r(r) * du_r_dr / (n.dUrtdUr() * n.drdrt()) + d2u_r_dr2_ + d2u_r_dz2_ - n.denorm_u_r(u_r) / n.denorm_r(r)**2)
+
+            z_momentum = n.denorm_u_r(u_r) * du_z_dr / (n.dUztdUz() * n.drdrt()) + \
+                        n.denorm_u_z(u_z) * du_z_dz / (n.dUztdUz() * n.dzdzt()) + \
+                        dp_dz / (n.dPtdP() * n.dzdzt())*1/rho - (nu + nu_t) * (1 / n.denorm_r(r) * du_z_dr / (n.dUztdUz() * n.drdrt()) + d2u_z_dr2_ + d2u_z_dz2_)
+            loss = torch.mean(mass_conservation**2 + r_momentum**2 + z_momentum**2)
     return loss
 
 
@@ -216,3 +230,4 @@ def plot_heatmaps(X, outputs, y, fig_prefix=""):
         plt.savefig(f"Figures/{file_suffix}.pdf")  # Changed file name structure for simplification
         plt.show()
     plot_all(X, outputs, y, "combined")
+

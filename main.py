@@ -9,7 +9,7 @@ from softadapt import LossWeightedSoftAdapt
 
 def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub, 
          fig_prefix, network = models.simpleNet, include_physics = False, normaliser = None,shuffle=True,
-         constants = {}, remove_dimensionality = False, adaptive_loss_weights = False,
+         constants = {}, adaptive_loss_weights = False,
          epochs_to_make_updates = 10, start_adapting_at_epoch = 0):
     
     network = getattr(models, network)
@@ -50,19 +50,14 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
             loss = criterion(outputs, batch_y) 
             losses["data"].append(loss.item())
             if include_physics:
-                if remove_dimensionality:
-                    physics_loss = utils.non_dimensionalized_physics_informed_loss(X_phys, model, constants, Normaliser)
-                else:
-                    physics_loss = utils.physics_informed_loss(X_phys, model, constants)
+                physics_loss = utils.physics_informed_loss(X_phys, model, constants, Normaliser)
                 losses["physics"].append(physics_loss.item())
                 if adaptive_loss_weights:
                     if epoch % epochs_to_make_updates == 0 and epoch >= start_adapting_at_epoch:
                         sample_data,sample_phys = torch.Tensor(losses["data"]), torch.Tensor(losses["physics"])
                         adapt_weights = softadapt_object.get_component_weights(sample_data,sample_phys, verbose = False)
                         print("Adapt weights: ",adapt_weights)
-                        print('Epoch: {}, Loss: {:.4f}, Physics loss: {:.8f}'.format(epoch+1, loss.item(), physics_loss.item()))
-                else:
-                    print('Epoch: {}, Loss: {:.4f}, Physics loss: {:.8f}'.format(epoch+1, loss.item(), physics_loss.item()))
+                print('Epoch: {}, Loss: {:.4f}, Physics loss: {:.8f}'.format(epoch+1, loss.item(), physics_loss.item()))
             else:
                 physics_loss = 0
                 print('Epoch: {}, Loss: {:.4f}'.format(epoch+1, loss.item()))
@@ -85,7 +80,7 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
             y = y.cpu().detach().numpy()
             for Normaliser_ in Normaliser:
                 X, outputs, y = Normaliser_.denormalise(X, outputs, y)
-            utils.plot_heatmaps(X, outputs, y, fig_prefix)
+            utils.plot_heatmaps(X, outputs, y, fig_prefix) # this is too slow
             utils.plot_losses(losses, fig_prefix)
 
 if __name__ == '__main__':

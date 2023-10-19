@@ -10,10 +10,16 @@ from softadapt import LossWeightedSoftAdapt
 def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub, 
          fig_prefix, network = models.simpleNet, include_physics = False, normaliser = None,shuffle=True,
          constants = {}, adaptive_loss_weights = False,
-         epochs_to_make_updates = 10, start_adapting_at_epoch = 0, finite_difference = False):
-    
+         epochs_to_make_updates = 10, start_adapting_at_epoch = 0, finite_difference = False,
+         seed = 42):
+    torch.manual_seed(seed)
     network = getattr(models, network)
-    X_phys,X_train, X_test, y_train, y_test = utils.load_data(csv_path,test_size=test_size, drop_hub=drop_hub, D = constants["D"])
+    X_phys,X_train, X_test, y_train, y_test = utils.load_data(csv_path,
+                                                            test_size=test_size,
+                                                            drop_hub=drop_hub,
+                                                            D = constants["D"],
+                                                            shuffle=shuffle,
+                                                            random_state=seed)
     normaliser = [getattr(normalisers, n) for n in normaliser] # list of classes
     Normaliser = [] # to be list of class instances
     for n in normaliser:
@@ -90,6 +96,23 @@ if __name__ == '__main__':
     training_config = config["training"]
     # Run the main function
     main(**training_config, **data_config)
+    ###
+    training_config["network"] = "broaderNet"
+    training_config["fig_prefix"] = "broaderNet"
+    main(**training_config, **data_config)
+    ###
+    training_config["network"] = "deeperNet"
+    training_config["fig_prefix"] = "deeperNet"
+    main(**training_config, **data_config)   
+    ###
+    training_config["network"] = "residualNet"
+    training_config["fig_prefix"] = "residualNet"
+    main(**training_config, **data_config)   
+    ###
+    # training_config["network"] = "CNN1D"
+    # training_config["fig_prefix"] = "CNN1D"
+    # main(**training_config, **data_config)   
+
 
 
 

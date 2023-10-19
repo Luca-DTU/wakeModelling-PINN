@@ -21,14 +21,14 @@ class dataset(Dataset):
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
     
-def load_data(csv_path,test_size=0.2, random_state=42, drop_hub= True, D = 0):
+def load_data(csv_path,test_size=0.2, random_state=42, drop_hub= True, D = 0, shuffle=True):
     df = pd.read_csv(csv_path)
     # Drop the specified rows
     if drop_hub:
         df = df.drop(df[(np.sqrt(df['r']**2 + df['z_cyl']**2) <= D)].index)
     X = df[['r', 'z_cyl']].values
     y = df[['Ur','Ux', 'P']].values #Ux is actually Uz
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state, shuffle = shuffle)
     # X_phys = X[np.where((X[:,0] < 800) & (abs(X[:,1]) < 1500))]# X[::10]
     X_phys = X
     # X_phys = X_phys[::5]
@@ -231,5 +231,5 @@ def plot_heatmaps(X, outputs, y, fig_prefix=""):
         plt.tight_layout()
         plt.savefig(f"Figures/{file_suffix}.pdf")  # Changed file name structure for simplification
         plt.show()
-    plot_all(X, outputs, y, "combined")
+    plot_all(X, outputs, y, fig_prefix)
 

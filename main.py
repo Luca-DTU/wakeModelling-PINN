@@ -10,7 +10,7 @@ from softadapt import LossWeightedSoftAdapt
 def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub, 
          fig_prefix, network = models.simpleNet, include_physics = False, normaliser = None,shuffle=True,
          constants = {}, adaptive_loss_weights = False,
-         epochs_to_make_updates = 10, start_adapting_at_epoch = 0):
+         epochs_to_make_updates = 10, start_adapting_at_epoch = 0, finite_difference = False):
     
     network = getattr(models, network)
     X_phys,X_train, X_test, y_train, y_test = utils.load_data(csv_path,test_size=test_size, drop_hub=drop_hub, D = constants["D"])
@@ -50,7 +50,7 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
             loss = criterion(outputs, batch_y) 
             losses["data"].append(loss.item())
             if include_physics:
-                physics_loss = utils.physics_informed_loss(X_phys, model, constants, Normaliser)
+                physics_loss = utils.physics_informed_loss(X_phys, model, constants, Normaliser, finite_difference)
                 losses["physics"].append(physics_loss.item())
                 if adaptive_loss_weights:
                     if epoch % epochs_to_make_updates == 0 and epoch >= start_adapting_at_epoch:

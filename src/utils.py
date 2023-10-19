@@ -21,7 +21,6 @@ class dataset(Dataset):
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
     
-
 def load_data(csv_path,test_size=0.2, random_state=42, drop_hub= True, D = 0):
     df = pd.read_csv(csv_path)
     # Drop the specified rows
@@ -48,7 +47,10 @@ def print_graph(g, indent=''):
         if next_g[0] is not None:
             print_graph(next_g[0], indent + '  ')
 
-def physics_informed_loss(rz, net, constants,Normaliser):
+def calc_derivative(func, var):
+    return torch.autograd.grad(func, var, grad_outputs=torch.ones_like(func), create_graph=True)[0]
+
+def physics_informed_loss(rz, net, constants, Normaliser, finite_difference = False):
     """
     Compute the physics-informed loss for a neural network.
 
@@ -62,6 +64,7 @@ def physics_informed_loss(rz, net, constants,Normaliser):
         net: The neural network model.
         constants (dict): Dictionary of physical constants.
         Normaliser (list): List of normalizers.
+        finite_difference (bool): Whether to use finite difference or automatic differentiation.
 
     Returns:
         torch.Tensor: The physics-informed loss.
@@ -95,21 +98,21 @@ def physics_informed_loss(rz, net, constants,Normaliser):
     p = uvp[:, 2] # / P
 
     # Calculate derivatives and second derivatives using functions
-    def calc_derivative(func, var):
-        return torch.autograd.grad(func, var, grad_outputs=torch.ones_like(func), create_graph=True)[0]
-
-    # Calculate the gradients
-    du_r = calc_derivative(u_r, rz)
-    du_r_dr, du_r_dz = du_r[:, 0], du_r[:, 1]
-    du_z = calc_derivative(u_z, rz)
-    du_z_dr, du_z_dz = du_z[:, 0], du_z[:, 1]
-    dp = calc_derivative(p, rz)
-    dp_dr, dp_dz = dp[:, 0], dp[:, 1]
-    # second derivatives
-    d2u_r_dr2 = calc_derivative(du_r_dr, rz)[:, 0]
-    d2u_r_dz2 = calc_derivative(du_r_dz, rz)[:, 1]
-    d2u_z_dr2 = calc_derivative(du_z_dr, rz)[:, 0]
-    d2u_z_dz2 = calc_derivative(du_z_dz, rz)[:, 1]
+    if finite_difference:
+        raise NotImplementedError("Finite difference not implemented yet")
+    else:
+        # Calculate the gradients using automatic differentiation
+        du_r = calc_derivative(u_r, rz)
+        du_r_dr, du_r_dz = du_r[:, 0], du_r[:, 1]
+        du_z = calc_derivative(u_z, rz)
+        du_z_dr, du_z_dz = du_z[:, 0], du_z[:, 1]
+        dp = calc_derivative(p, rz)
+        dp_dr, dp_dz = dp[:, 0], dp[:, 1]
+        # second derivatives
+        d2u_r_dr2 = calc_derivative(du_r_dr, rz)[:, 0]
+        d2u_r_dz2 = calc_derivative(du_r_dz, rz)[:, 1]
+        d2u_z_dr2 = calc_derivative(du_z_dr, rz)[:, 0]
+        d2u_z_dz2 = calc_derivative(du_z_dz, rz)[:, 1]
 
     match (physical_normaliser, len_normaliser):
         case (False, 0):
@@ -174,7 +177,6 @@ def physics_informed_loss(rz, net, constants,Normaliser):
                         dp_dz / (n.dPtdP() * n.dzdzt())*1/rho - (nu + nu_t) * (1 / n.denorm_r(r) * du_z_dr / (n.dUztdUz() * n.drdrt()) + d2u_z_dr2_ + d2u_z_dz2_)
             loss = torch.mean(mass_conservation**2 + r_momentum**2 + z_momentum**2)
     return loss
-
 
 def plot_losses(losses, fig_prefix):
     fig = plt.figure(figsize=(15, 5))

@@ -2,6 +2,7 @@ import torch
 from torch.utils.data import DataLoader
 from src import utils, models, normalisers
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+import hydra
 from omegaconf import OmegaConf
 from softadapt import LossWeightedSoftAdapt
 
@@ -91,29 +92,15 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
             utils.plot_heatmaps(X, outputs, y, fig_prefix) # this is too slow
             utils.plot_losses(losses, fig_prefix)
 
-if __name__ == '__main__':
-    # Load the config file
-    config = OmegaConf.to_container(OmegaConf.load("config.yaml"))
+@hydra.main(config_path="conf", config_name="config",version_base=None)
+def my_app(config):
     data_config = config["data"]
     training_config = config["training"]
     # Run the main function
     main(**training_config, **data_config)
-    ###
-    # training_config["network"] = "broaderNet"
-    # training_config["fig_prefix"] = "broaderNet"
-    # main(**training_config, **data_config)
-    # ###
-    # training_config["network"] = "deeperNet"
-    # training_config["fig_prefix"] = "deeperNet"
-    # main(**training_config, **data_config)   
-    # ###
-    # training_config["network"] = "residualNet"
-    # training_config["fig_prefix"] = "residualNet"
-    # main(**training_config, **data_config)   
-    # ###
-    # # training_config["network"] = "CNN1D"
-    # # training_config["fig_prefix"] = "CNN1D"
-    # # main(**training_config, **data_config)   
+
+if __name__ == '__main__':
+    my_app()
 
 
 

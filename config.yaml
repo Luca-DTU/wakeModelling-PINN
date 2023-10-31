@@ -11,20 +11,23 @@
 
     training:
       learning_rate : 0.0001
-      num_epochs : 1000
+      num_epochs : 10000
       batch_size : -1 # -1 for full batch
       test_size : 0.9 # 0.9 for 90% test, 10% train
-      include_physics : False
+      include_physics : True
       # normaliser : [physics_normaliser, min_max_normaliser]
-      # normaliser : [physics_normaliser, Z_normaliser]
-      normaliser : [min_max_normaliser]
+      normaliser : [physics_normaliser, Z_normaliser]
+      # normaliser : [min_max_normaliser]
+      # normaliser : [Z_normaliser]
       # normaliser : [physics_normaliser]
       # normaliser : []
-      shuffle : False
+      shuffle : True
       network : simpleNet
       fig_prefix : "simpleNet"
-      adaptive_loss_weights : False
-      epochs_to_make_updates : 10
-      start_adapting_at_epoch : 50
+      # network : CNN1D
+      # fig_prefix : "CNN1D"
+      adaptive_loss_weights : True
+      epochs_to_make_updates : 100
+      start_adapting_at_epoch : 1000
       finite_difference : False
     

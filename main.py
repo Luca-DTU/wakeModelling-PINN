@@ -63,10 +63,12 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
                         sample_data,sample_phys = torch.Tensor(losses["data"]), torch.Tensor(losses["physics"])
                         adapt_weights = softadapt_object.get_component_weights(sample_data,sample_phys, verbose = False)
                         print("Adapt weights: ",adapt_weights)
-                print('Epoch: {}, Loss: {:.4f}, Physics loss: {:.8f}'.format(epoch+1, loss.item(), physics_loss.item()))
+                if epoch % 50 == 0:
+                    print('Epoch: {}, Loss: {:.4f}, Physics loss: {:.8f}'.format(epoch+1, loss.item(), physics_loss.item()))
             else:
                 physics_loss = 0
-                print('Epoch: {}, Loss: {:.4f}'.format(epoch+1, loss.item()))
+                if epoch % 50 == 0:
+                    print('Epoch: {}, Loss: {:.4f}'.format(epoch+1, loss.item()))
             w_loss = loss/adapt_weights[0] + physics_loss/adapt_weights[1]
             w_loss.backward()
             optimizer.step()
@@ -97,21 +99,21 @@ if __name__ == '__main__':
     # Run the main function
     main(**training_config, **data_config)
     ###
-    training_config["network"] = "broaderNet"
-    training_config["fig_prefix"] = "broaderNet"
-    main(**training_config, **data_config)
-    ###
-    training_config["network"] = "deeperNet"
-    training_config["fig_prefix"] = "deeperNet"
-    main(**training_config, **data_config)   
-    ###
-    training_config["network"] = "residualNet"
-    training_config["fig_prefix"] = "residualNet"
-    main(**training_config, **data_config)   
-    ###
-    # training_config["network"] = "CNN1D"
-    # training_config["fig_prefix"] = "CNN1D"
+    # training_config["network"] = "broaderNet"
+    # training_config["fig_prefix"] = "broaderNet"
+    # main(**training_config, **data_config)
+    # ###
+    # training_config["network"] = "deeperNet"
+    # training_config["fig_prefix"] = "deeperNet"
     # main(**training_config, **data_config)   
+    # ###
+    # training_config["network"] = "residualNet"
+    # training_config["fig_prefix"] = "residualNet"
+    # main(**training_config, **data_config)   
+    # ###
+    # # training_config["network"] = "CNN1D"
+    # # training_config["fig_prefix"] = "CNN1D"
+    # # main(**training_config, **data_config)   
 
 
 

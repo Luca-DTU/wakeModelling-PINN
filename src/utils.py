@@ -50,6 +50,16 @@ def print_graph(g, indent=''):
 def calc_derivative(func, var):
     return torch.autograd.grad(func, var, grad_outputs=torch.ones_like(func), create_graph=True)[0]
 
+def calc_derivative_finite_diff(u,rz):
+        # create grid
+        r_unique = torch.unique(rz[:, 0]) # no derivative for torch.unique operation, this leads to failure in backward pass
+        z_unique = torch.unique(rz[:, 1])
+        u_grid = u.view(len(r_unique), len(z_unique))
+        # Compute finite differences
+        dudr = (torch.roll(u_grid, shifts=-1, dims=1) - torch.roll(u_grid, shifts=1, dims=1)) / (2 * (r_unique[1] - r_unique[0]))
+        dudz = (torch.roll(u_grid, shifts=-1, dims=0) - torch.roll(u_grid, shifts=1, dims=0)) / (2 * (z_unique[1] - z_unique[0]))
+        return dudr.view(-1), dudz.view(-1)
+
 def physics_informed_loss(rz, net, constants, Normaliser, finite_difference = False):
     """
     Compute the physics-informed loss for a neural network.
@@ -99,7 +109,16 @@ def physics_informed_loss(rz, net, constants, Normaliser, finite_difference = Fa
 
     # Calculate derivatives and second derivatives using functions
     if finite_difference:
-        raise NotImplementedError("Finite difference not implemented yet")
+        # raise NotImplementedError("Finite difference not implemented yet")
+        du_r_dr, du_r_dz = calc_derivative_finite_diff(u_r, rz)
+        du_z_dr, du_z_dz = calc_derivative_finite_diff(u_z, rz)
+        dp_dr, dp_dz = calc_derivative_finite_diff(p, rz)
+        # second derivatives
+        d2u_r_dr2 = calc_derivative_finite_diff(du_r_dr, rz)[0]
+        d2u_r_dz2 = calc_derivative_finite_diff(du_r_dz, rz)[1]
+        d2u_z_dr2 = calc_derivative_finite_diff(du_z_dr, rz)[0]
+        d2u_z_dz2 = calc_derivative_finite_diff(du_z_dz, rz)[1]
+        
     else:
         # Calculate the gradients using automatic differentiation
         du_r = calc_derivative(u_r, rz)

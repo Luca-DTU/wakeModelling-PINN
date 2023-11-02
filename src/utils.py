@@ -21,7 +21,7 @@ class dataset(Dataset):
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
     
-def load_data(csv_path,test_size=0.2, random_state=42, drop_hub= True, D = 0, shuffle=True):
+def load_data(csv_path,test_size=0.2, random_state=42, drop_hub= True, D = 0, shuffle=True, physics_points_size_ratio = 0.1):
     df = pd.read_csv(csv_path)
     # Drop the specified rows
     if drop_hub:
@@ -29,11 +29,10 @@ def load_data(csv_path,test_size=0.2, random_state=42, drop_hub= True, D = 0, sh
     X = df[['r', 'z_cyl']].values
     y = df[['Ur','Ux', 'P']].values #Ux is actually Uz
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state, shuffle = shuffle)
-    # X_phys = X[np.where((X[:,0] < 800) & (abs(X[:,1]) < 1500))]# X[::10]
     X_phys = X
-    # X_phys = X_phys[::5]
-    # plt.scatter(X_train[:,0], X_train[:,1], s=0.1)
-    # plt.scatter(X_phys[:,0], X_phys[:,1], s=0.1)
+    num_samples = int(len(X_phys) * physics_points_size_ratio)
+    idx = np.random.choice(len(X_phys), num_samples, replace=False)
+    X_phys = X_phys[idx]
     X_test = X
     y_test = y
     return X_phys,X_train, X_test, y_train, y_test
@@ -195,7 +194,7 @@ def physics_informed_loss(rz, net, constants, Normaliser, finite_difference = Fa
                         n.denorm_u_z(u_z) * du_z_dz / (n.dUztdUz() * n.dzdzt()) + \
                         dp_dz / (n.dPtdP() * n.dzdzt())*1/rho - (nu + nu_t) * (1 / n.denorm_r(r) * du_z_dr / (n.dUztdUz() * n.drdrt()) + d2u_z_dr2_ + d2u_z_dz2_)
             loss = torch.mean(mass_conservation**2 + r_momentum**2 + z_momentum**2)
-    return loss
+    return torch.mean(mass_conservation**2), torch.mean(r_momentum**2), torch.mean(z_momentum**2)
 
 def plot_losses(losses, fig_prefix):
     fig = plt.figure(figsize=(15, 5))

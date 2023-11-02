@@ -141,6 +141,14 @@ class min_max_normaliser():
         min_ = self.min_y[2]
         return 1 / ((self.new_max - self.new_min) * (max_ - min_))
 
+class physics_normliser_empty(): # to handle pre-normalised data
+    def __init__(self,X,y,constants):
+        self.physical = True
+        self.constants = constants
+    def normalise(self, X,y):
+        return X,y
+    def denormalise(self, X,outputs,y):
+        return X, outputs, y
 class physics_normaliser():
     def __init__(self,X,y,constants):
         self.physical = True

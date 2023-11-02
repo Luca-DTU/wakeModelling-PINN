@@ -12,7 +12,7 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
          fig_prefix, network = models.simpleNet, include_physics = False, normaliser = None,shuffle=True,
          constants = {}, adaptive_loss_weights = False,
          epochs_to_make_updates = 10, start_adapting_at_epoch = 0, finite_difference = False,
-         seed = 42):
+         seed = 42, physics_points_size_ratio = 1.0):
     torch.manual_seed(seed)
     network = getattr(models, network)
     X_phys,X_train, X_test, y_train, y_test = utils.load_data(csv_path,
@@ -20,7 +20,8 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
                                                             drop_hub=drop_hub,
                                                             D = constants["D"],
                                                             shuffle=shuffle,
-                                                            random_state=seed)
+                                                            random_state=seed,
+                                                            physics_points_size_ratio = physics_points_size_ratio)
     normaliser = [getattr(normalisers, n) for n in normaliser] # list of classes
     Normaliser = [] # to be list of class instances
     for n in normaliser:
@@ -36,7 +37,7 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
     X_phys = torch.from_numpy(X_phys).float().to(device)
     if batch_size == -1:
         batch_size = len(train_dataset)
-    train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=0)
+    train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
     test_loader = DataLoader(dataset=test_dataset, num_workers=0, batch_size=len(test_dataset))
     # Define the model
     model = network().to(device)
@@ -48,32 +49,36 @@ def main(csv_path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
     adapt_weights = torch.tensor([1,1])
     softadapt_object  = LossWeightedSoftAdapt(beta=0.1, accuracy_order=epochs_to_make_updates)
     # training loop
+    phys_batch_size = X_phys.size()[0]//len(train_loader)
     for epoch in range(num_epochs):
-        for batch_X, batch_y in train_loader:
+        epoch_losses = {"data": [], "physics": []}
+        for n_batch, (batch_X, batch_y) in enumerate(train_loader):
             batch_X = batch_X.to(device)
             batch_y = batch_y.to(device)
+            batch_phys = X_phys[n_batch*phys_batch_size:(n_batch+1)*phys_batch_size,:].to(device)
             optimizer.zero_grad()
             outputs = model(batch_X)
             loss = criterion(outputs, batch_y) 
-            losses["data"].append(loss.item())
+            epoch_losses["data"].append(loss.item())
             if include_physics:
-                physics_loss = utils.physics_informed_loss(X_phys, model, constants, Normaliser, finite_difference)
-                losses["physics"].append(physics_loss.item())
-                if adaptive_loss_weights:
-                    if epoch % epochs_to_make_updates == 0 and epoch >= start_adapting_at_epoch:
-                        sample_data,sample_phys = torch.Tensor(losses["data"]), torch.Tensor(losses["physics"])
-                        adapt_weights = softadapt_object.get_component_weights(sample_data,sample_phys, verbose = False)
-                        print("Adapt weights: ",adapt_weights)
-                if epoch % 50 == 0:
-                    print('Epoch: {}, Loss: {:.4f}, Physics loss: {:.8f}'.format(epoch+1, loss.item(), physics_loss.item()))
+                mass_conservation, r_momentum, z_momentum = utils.physics_informed_loss(batch_phys, model, constants, Normaliser, finite_difference)
+                physics_loss = mass_conservation + r_momentum + z_momentum
+                epoch_losses["physics"].append(physics_loss.item())
             else:
-                physics_loss = 0
-                if epoch % 50 == 0:
-                    print('Epoch: {}, Loss: {:.4f}'.format(epoch+1, loss.item()))
-            w_loss = loss/adapt_weights[0] + physics_loss/adapt_weights[1]
-            w_loss.backward()
+                epoch_losses["physics"].append(0)
+            weighted_loss = loss/adapt_weights[0] + physics_loss/adapt_weights[1]
+            weighted_loss.backward()
             optimizer.step()
-        
+        losses["data"].append(sum(epoch_losses["data"])/len(epoch_losses["data"]))
+        losses["physics"].append(sum(epoch_losses["physics"])/len(epoch_losses["physics"]))
+        if epoch % 50 == 0:
+            print('Epoch: {}, Loss: {:.4f}, Physics loss: {:.8f}'.format(epoch+1, losses["data"][-1], losses["physics"][-1]))
+        if adaptive_loss_weights:
+            if epoch % epochs_to_make_updates == 0 and epoch >= start_adapting_at_epoch:
+                sample_data,sample_phys = torch.Tensor(losses["data"]), torch.Tensor(losses["physics"])
+                adapt_weights = softadapt_object.get_component_weights(sample_data,sample_phys, verbose = False)
+                print("Adapt weights: ",adapt_weights)
+
     # Test the model
     model.eval()
     with torch.no_grad():

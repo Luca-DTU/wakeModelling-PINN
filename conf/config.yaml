@@ -12,11 +12,12 @@
     training:
       learning_rate : 0.0001
       num_epochs : 10000
-      batch_size : -1 # -1 for full batch
+      batch_size : 64 # -1 for full batch
       test_size : 0.9 # 0.9 for 90% test, 10% train
       include_physics : True
-      # normaliser : [physics_normaliser, min_max_normaliser]
-      normaliser : [physics_normaliser, Z_normaliser]
+      physics_points_size_ratio : 0.1
+      normaliser : [physics_normaliser, min_max_normaliser]
+      # normaliser : [physics_normaliser, Z_normaliser]
       # normaliser : [min_max_normaliser]
       # normaliser : [Z_normaliser]
       # normaliser : [physics_normaliser]
@@ -28,6 +29,6 @@
       # fig_prefix : "CNN1D"
       adaptive_loss_weights : True
       epochs_to_make_updates : 100
-      start_adapting_at_epoch : 1000
+      start_adapting_at_epoch : 8000
       finite_difference : False
     

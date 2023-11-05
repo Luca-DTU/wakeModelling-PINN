@@ -1,11 +1,11 @@
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
-import torch.nn as nn
+import xarray as xr
 
     
 class dataset(Dataset):
@@ -21,13 +21,58 @@ class dataset(Dataset):
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
     
-def load_data(csv_path,test_size=0.2, random_state=42, drop_hub= True, D = 0, shuffle=True, physics_points_size_ratio = 0.1):
-    df = pd.read_csv(csv_path)
-    # Drop the specified rows
-    if drop_hub:
-        df = df.drop(df[(np.sqrt(df['r']**2 + df['z_cyl']**2) <= D)].index)
-    X = df[['r', 'z_cyl']].values
-    y = df[['Ur','Ux', 'P']].values #Ux is actually Uz
+class test_dataset(Dataset):
+    def __init__(self, X, y):
+        self.X = X
+        match X.shape[1]:
+            case 2:
+                self.y = y
+                self.X = torch.from_numpy(self.X).float()
+                self.y = torch.from_numpy(self.y).float()
+                self.len = 1
+            case 5:
+                self.df = pd.DataFrame(np.concatenate((X, y), axis=1), columns=['col0','col1', 'col2', 'col3', 'col4', 'col5', 'col6','col7'])
+                self.groups = self.df.groupby(['col2', 'col3'])
+                self.group_dict = {group: torch.from_numpy(data.values).float() for group, data in self.groups}
+                self.len = len(self.group_dict) #len(self.groups)
+            case _:
+                raise NotImplementedError("Only 2D and 5D data supported")
+    def __len__(self):
+        return self.len
+    
+    def __getitem__(self, idx):
+        if self.X.shape[1] == 2:
+            return self.X, self.y
+        elif self.X.shape[1] == 5:
+            instance = self.group_dict[list(self.groups.groups.keys())[idx]]
+            return instance[:,:-3], instance[:,-3:]
+    
+def load_data(path,test_size=0.2, random_state=42, drop_hub= True, D = 0, shuffle=True, physics_points_size_ratio = 0.1):
+    if path.endswith(".nc"):
+        ds = xr.open_dataset(path)
+        print(ds)
+        variables = list(ds.data_vars.keys())
+        print(variables)
+        df_list = []
+        for variable in variables:
+            if variable == "muT":
+                continue
+            df = ds[variable].to_dataframe()
+            df_list.append(df)
+        df = pd.concat(df_list, axis=1)
+        df = df.merge(ds["muT"].to_dataframe(), left_index=True, right_index=True).reset_index()
+        if drop_hub:
+            df = df.drop(df[(np.sqrt(df['r']**2 + df['z_cyl']**2) <= D)].index)
+        X = df[['r', 'z_cyl','CT', 'TI_amb',"muT"]].values
+        y = df[['U_r','U_z', 'P']].values
+
+    elif path.endswith(".csv"):
+        df = pd.read_csv(path)
+        # Drop the specified rows
+        if drop_hub:
+            df = df.drop(df[(np.sqrt(df['r']**2 + df['z_cyl']**2) <= D)].index)
+        X = df[['r', 'z_cyl']].values
+        y = df[['Ur','Ux', 'P']].values #Ux is actually Uz
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state, shuffle = shuffle)
     X_phys = X
     num_samples = int(len(X_phys) * physics_points_size_ratio)
@@ -88,7 +133,8 @@ def physics_informed_loss(rz, net, constants, Normaliser, finite_difference = Fa
     # check if physical normalisation has been applied (i.e. de-dimensionalisation)
     physical_normaliser = any([Normaliser_.physical for Normaliser_ in Normaliser])
     len_normaliser = len(Normaliser)
-
+    if mu_t is None:
+        mu_t = rz[:,4]
     if physical_normaliser:
         rz = rz #/ D  # Non-dimensional coordinates
         nu = mu / (rho * U_inf * D)  # Non-dimensional kinematic viscosity
@@ -196,7 +242,7 @@ def physics_informed_loss(rz, net, constants, Normaliser, finite_difference = Fa
             loss = torch.mean(mass_conservation**2 + r_momentum**2 + z_momentum**2)
     return torch.mean(mass_conservation**2), torch.mean(r_momentum**2), torch.mean(z_momentum**2)
 
-def plot_losses(losses, fig_prefix):
+def plot_losses(losses, fig_prefix,output_dir = "Figures"):
     fig = plt.figure(figsize=(15, 5))
     ax1 = fig.add_subplot(121)
     ax1.plot(losses["data"])
@@ -211,10 +257,10 @@ def plot_losses(losses, fig_prefix):
     ax2.set_ylabel("Loss")
     ax2.set_yscale("log")
     plt.tight_layout()
-    plt.savefig(f"Figures/{fig_prefix}_losses.pdf")
+    plt.savefig(f"{output_dir}/{fig_prefix}_losses.pdf")
     plt.show()
 
-def plot_heatmaps(X, outputs, y, fig_prefix=""):
+def plot_heatmaps(X, outputs, y, fig_prefix="",output_dir = "Figures"):
 
     def plot_single_heatmap(r, z, values, ax, cmap, cbar_label):
         df = pd.DataFrame.from_dict({'r': r, 'z': z, 'values': values})
@@ -247,7 +293,7 @@ def plot_heatmaps(X, outputs, y, fig_prefix=""):
 
         # Adjust layout and save
         plt.tight_layout()
-        plt.savefig(f"Figures/{file_suffix}.pdf")  # Changed file name structure for simplification
+        plt.savefig(f"{output_dir}/{file_suffix}.pdf")  # Changed file name structure for simplification
         plt.show()
     plot_all(X, outputs, y, fig_prefix)
 

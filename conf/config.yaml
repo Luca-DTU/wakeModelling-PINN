@@ -1,5 +1,5 @@
     data:
-      csv_path : 'Data/2d_cyl.csv'
+      path : 'Data/2d_cyl.csv'
       drop_hub : True
       constants:
         rho : 1.225 # kg/m^3

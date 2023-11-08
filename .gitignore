@@ -8,3 +8,6 @@ src/__pycache__/utils.cpython-310.pyc
 Figures/
 multirun/
 outputs/
+src/__pycache__/models.cpython-310.pyc
+*.out
+*.err

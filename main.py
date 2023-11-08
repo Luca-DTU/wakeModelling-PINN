@@ -66,7 +66,7 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
             epoch_losses["data"].append(loss.item())
             if include_physics: # despite the names, these quantitites are the sum of squared residuals of the equations
                 mass_conservation, r_momentum, z_momentum = utils.physics_informed_loss(batch_phys, model, constants, Normaliser, finite_difference)
-                log.info(f"mass_conservation: {mass_conservation.item()}, r_momentum: {r_momentum.item()}, z_momentum: {z_momentum.item()}")
+                log.debug(f"mass_conservation: {mass_conservation.item()}, r_momentum: {r_momentum.item()}, z_momentum: {z_momentum.item()}")
                 physics_loss = mass_conservation + r_momentum + z_momentum
                 epoch_losses["physics"].append(physics_loss.item())
             else:

@@ -11,18 +11,18 @@
 
     training:
       learning_rate : 0.0001
-      num_epochs : 10
-      batch_size : 32 # -1 for full batch
-      test_size : 0.999 # 0.9 for 90% test, 10% train
+      num_epochs : 1000
+      batch_size : 64 # -1 for full batch
+      test_size : 0.99 # 0.9 for 90% test, 10% train
       include_physics : True
       physics_points_size_ratio : 0.1
-      normaliser : [physics_normaliser_empty, min_max_normaliser]
+      normaliser : [physics_normaliser_empty, Z_normaliser]
       shuffle : True
-      network : simpleNetBigData
+      network : residualNetBigData
       fig_prefix : "simpleNet"
       # network : CNN1D
       # fig_prefix : "CNN1D"
       adaptive_loss_weights : True
-      epochs_to_make_updates : 1
-      start_adapting_at_epoch : 5
+      epochs_to_make_updates : 50
+      start_adapting_at_epoch : 700
       finite_difference : False

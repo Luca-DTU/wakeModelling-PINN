@@ -3,17 +3,19 @@
 ### -- specify queue -- 
 #BSUB -q hpc
 ### -- set the job Name -- 
-#BSUB -J pinn-wake-sweep
+#BSUB -J pinn-wake-test
 ### -- ask for number of cores (default: 1) -- 
-#BSUB -n 4 
+#BSUB -n 1 
+### ask for gpu
+#BSUB -gpu "num=1:mode=exclusive_process"
 ### -- specify that the cores must be on the same host -- 
 #BSUB -R "span[hosts=1]"
 ### -- specify that we need 4GB of memory per core/slot -- 
-#BSUB -R "rusage[mem=8GB]"
+#BSUB -R "rusage[mem=32GB]"
 ### -- specify that we want the job to get killed if it exceeds 3 GB per core/slot -- 
 #BSUB -M 7GB
 ### -- set walltime limit: hh:mm -- 
-#BSUB -W 96:00 
+#BSUB -W 15
 ### -- set the email address -- 
 # please uncomment the following line and put in your e-mail address,
 # if you want to receive e-mail notifications on a non-default address
@@ -28,4 +30,5 @@
 #BSUB -e Output_%J.err 
 
 # here follow the commands you want to execute with input.in as the input file
+pip install -r requirements.txt
 python main.py -m +experiment=grid_search hydra/launcher=joblib > outputs/

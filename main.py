@@ -65,6 +65,7 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
                 physics_loss = mass_conservation + r_momentum + z_momentum
                 epoch_losses["physics"].append(physics_loss.item())
             else:
+                physics_loss = torch.tensor(0)
                 epoch_losses["physics"].append(0)
             weighted_loss = loss/adapt_weights[0] + physics_loss/adapt_weights[1]
             weighted_loss.backward()
@@ -73,7 +74,7 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
         losses["physics"].append(sum(epoch_losses["physics"])/len(epoch_losses["physics"]))
         if epoch % epochs_to_make_updates == 0:
             print('Epoch: {}, Loss: {:.4f}, Physics loss: {:.8f}'.format(epoch+1, losses["data"][-1], losses["physics"][-1]))
-            if adaptive_loss_weights and epoch >= start_adapting_at_epoch:
+            if adaptive_loss_weights and epoch >= start_adapting_at_epoch and include_physics:
                 sample_data,sample_phys = torch.Tensor(losses["data"]), torch.Tensor(losses["physics"])
                 adapt_weights = softadapt_object.get_component_weights(sample_data,sample_phys, verbose = False)
                 print("Adapt weights: ",adapt_weights)
@@ -98,7 +99,7 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
             utils.plot_heatmaps(X, outputs, y,prefix,output_dir) # this is too slow
         utils.plot_losses(losses, fig_prefix,output_dir)
 
-@hydra.main(config_path="conf", config_name="big_data",version_base=None)
+@hydra.main(config_path="conf", config_name="config",version_base=None)
 def my_app(config):
     data_config = config["data"]
     training_config = config["training"]

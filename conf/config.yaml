@@ -10,25 +10,25 @@
       seed : 42
 
     training:
-      learning_rate : 0.0001
-      num_epochs : 10000
+      learning_rate : 0.001
+      num_epochs : 1000
       batch_size : 64 # -1 for full batch
-      test_size : 0.9 # 0.9 for 90% test, 10% train
+      test_size : 0.99 # 0.9 for 90% test, 10% train
       include_physics : True
       physics_points_size_ratio : 0.1
-      normaliser : [physics_normaliser, min_max_normaliser]
-      # normaliser : [physics_normaliser, Z_normaliser]
+      # normaliser : [physics_normaliser, min_max_normaliser]
+      normaliser : [physics_normaliser, Z_normaliser]
       # normaliser : [min_max_normaliser]
       # normaliser : [Z_normaliser]
       # normaliser : [physics_normaliser]
       # normaliser : []
       shuffle : True
-      network : simpleNet
+      network : residualNet
       fig_prefix : "simpleNet"
       # network : CNN1D
       # fig_prefix : "CNN1D"
       adaptive_loss_weights : True
-      epochs_to_make_updates : 100
-      start_adapting_at_epoch : 8000
+      epochs_to_make_updates : 50
+      start_adapting_at_epoch : 700
       finite_difference : False
     

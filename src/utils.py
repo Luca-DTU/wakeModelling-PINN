@@ -258,7 +258,7 @@ def plot_losses(losses, fig_prefix,output_dir = "Figures"):
     ax2.set_yscale("log")
     plt.tight_layout()
     plt.savefig(f"{output_dir}/{fig_prefix}_losses.pdf")
-    plt.show()
+    plt.close()
 
 def plot_heatmaps(X, outputs, y, fig_prefix="",output_dir = "Figures"):
 
@@ -294,6 +294,6 @@ def plot_heatmaps(X, outputs, y, fig_prefix="",output_dir = "Figures"):
         # Adjust layout and save
         plt.tight_layout()
         plt.savefig(f"{output_dir}/{file_suffix}.pdf")  # Changed file name structure for simplification
-        plt.show()
+        plt.close()
     plot_all(X, outputs, y, fig_prefix)
 

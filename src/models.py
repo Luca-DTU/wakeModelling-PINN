@@ -2,6 +2,27 @@ import torch
 import torch.nn as nn
 import torch.nn.init as init
 
+class residualNetBigData(nn.Module):
+    def __init__(self):
+        super(residualNetBigData, self).__init__()
+        self.fc1 = nn.Linear(4, 64)
+        self.fc2 = nn.Linear(64, 64)
+        self.fc3 = nn.Linear(64, 64)
+        self.fc4 = nn.Linear(64, 3)
+        self.activation = torch.nn.Tanh()
+        
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                init.xavier_uniform_(m.weight)
+
+    def forward(self, x):
+        x = x[:,:4]
+        out = self.activation(self.fc1(x))
+        identity = out  # save the output for the skip connection
+        out = self.activation(self.fc2(out)) 
+        out = self.activation(self.fc3(out)) + identity
+        out = self.fc4(out)
+        return out
 
 class simpleNetBigData(torch.nn.Module):
     def __init__(self):

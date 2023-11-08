@@ -130,28 +130,3 @@ class residualNet(nn.Module):
         out = self.fc4(out)
         return out
 
-class CNN1D(nn.Module):
-    def __init__(self):
-        super(CNN1D, self).__init__()
-        self.conv1 = nn.Conv1d(in_channels=2, out_channels=32, kernel_size=1)
-        self.conv2 = nn.Conv1d(in_channels=32, out_channels=64, kernel_size=1)
-        self.fc1 = nn.Linear(64, 128)
-        self.fc2 = nn.Linear(128, 3)
-        self.activation = nn.ReLU()
-        for m in self.modules():
-            if isinstance(m, nn.Conv1d) or isinstance(m, nn.Linear):
-                init.kaiming_normal_(m.weight)
-
-    def forward(self, x):
-        # Reshape the input to (batch_size, num_channels, width)
-        x = x.unsqueeze(2)  # adds a dimension of size 1 at the second index position
-
-        x = self.activation(self.conv1(x))
-        x = self.activation(self.conv2(x))
-
-        # Flatten the output for the fully connected layer
-        x = x.view(x.size(0), -1)  # x.size(0) is batch_size
-
-        x = self.activation(self.fc1(x))
-        x = self.fc2(x)
-        return x

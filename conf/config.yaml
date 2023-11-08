@@ -24,11 +24,11 @@
       # normaliser : []
       shuffle : True
       network : residualNet
-      fig_prefix : "simpleNet"
+      fig_prefix : "_"
       # network : CNN1D
       # fig_prefix : "CNN1D"
       adaptive_loss_weights : True
       epochs_to_make_updates : 50
-      start_adapting_at_epoch : 700
+      start_adapting_at_epoch : 500
       finite_difference : False
     

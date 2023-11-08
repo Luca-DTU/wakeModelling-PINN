@@ -7,6 +7,8 @@ from omegaconf import OmegaConf
 from softadapt import LossWeightedSoftAdapt
 import os
 import shutil
+import logging
+log = logging.getLogger(__name__)
 
 def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub, 
          fig_prefix, network = models.simpleNet, include_physics = False, normaliser = None,shuffle=True,
@@ -50,6 +52,8 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
     softadapt_object  = LossWeightedSoftAdapt(beta=0.1, accuracy_order=epochs_to_make_updates)
     # training loop
     phys_batch_size = X_phys.size()[0]//len(train_loader)
+    log.info(f"number of batches: {len(train_loader)}")
+    log.info(f"Physics batch size: {phys_batch_size}")
     for epoch in range(num_epochs):
         epoch_losses = {"data": [], "physics": []}
         for n_batch, (batch_X, batch_y) in enumerate(train_loader):
@@ -62,6 +66,7 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
             epoch_losses["data"].append(loss.item())
             if include_physics: # despite the names, these quantitites are the sum of squared residuals of the equations
                 mass_conservation, r_momentum, z_momentum = utils.physics_informed_loss(batch_phys, model, constants, Normaliser, finite_difference)
+                log.info(f"mass_conservation: {mass_conservation.item()}, r_momentum: {r_momentum.item()}, z_momentum: {z_momentum.item()}")
                 physics_loss = mass_conservation + r_momentum + z_momentum
                 epoch_losses["physics"].append(physics_loss.item())
             else:
@@ -73,11 +78,11 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
         losses["data"].append(sum(epoch_losses["data"])/len(epoch_losses["data"]))
         losses["physics"].append(sum(epoch_losses["physics"])/len(epoch_losses["physics"]))
         if epoch % epochs_to_make_updates == 0:
-            print('Epoch: {}, Loss: {:.4f}, Physics loss: {:.8f}'.format(epoch+1, losses["data"][-1], losses["physics"][-1]))
+            log.info('Epoch: {}, Loss: {:.4f}, Physics loss: {:.8f}'.format(epoch+1, losses["data"][-1], losses["physics"][-1]))
             if adaptive_loss_weights and epoch >= start_adapting_at_epoch and include_physics:
                 sample_data,sample_phys = torch.Tensor(losses["data"]), torch.Tensor(losses["physics"])
                 adapt_weights = softadapt_object.get_component_weights(sample_data,sample_phys, verbose = False)
-                print("Adapt weights: ",adapt_weights)
+                log.info(f"Adapt weights: {adapt_weights}")
 
     # Test the model
     model.eval()
@@ -87,7 +92,8 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
             y = y.squeeze().to(device)
             outputs = model(X)
             loss = criterion(outputs, y)
-            print('Test loss: {:.4f}'.format(loss.item()))
+            log.info('Test loss: {:.4f}'.format(loss.item()))
+            
             # plot the results
             X = X.cpu().detach().numpy()
             outputs = outputs.cpu().detach().numpy()
@@ -98,6 +104,9 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
             prefix = f"{fig_prefix}_{n}"
             utils.plot_heatmaps(X, outputs, y,prefix,output_dir) # this is too slow
         utils.plot_losses(losses, fig_prefix,output_dir)
+    # Store model
+    torch.save(model.state_dict(), os.path.join(output_dir, f"{fig_prefix}_model.pth"))
+    log.info(f"Model saved to {os.path.join(output_dir, f'{fig_prefix}_model.pth')}")
 
 @hydra.main(config_path="conf", config_name="config",version_base=None)
 def my_app(config):

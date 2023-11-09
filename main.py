@@ -107,13 +107,16 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
     # Store model
     torch.save(model.state_dict(), os.path.join(output_dir, f"{fig_prefix}_model.pth"))
     log.info(f"Model saved to {os.path.join(output_dir, f'{fig_prefix}_model.pth')}")
+    return loss.item()
 
 @hydra.main(config_path="conf", config_name="config",version_base=None)
 def my_app(config):
     data_config = config["data"]
     training_config = config["training"]
     # Run the main function
-    main(**training_config, **data_config)
+    log.info(f"Running with config: {OmegaConf.to_yaml(config['training'])}")
+    test_loss = main(**training_config, **data_config)
+    return test_loss
 
 def clean_up_empty_files():
     outputs_folder = "outputs"

@@ -1,0 +1,36 @@
+defaults:
+  - _self_
+  - override hydra/sweeper: optuna
+
+data:
+  path : 'Data/2d_cyl.csv'
+  drop_hub : True
+  constants:
+    rho : 1.225 # kg/m^3
+    mu : 1.78406e-05 # kg/m/s 
+    mu_t : 41.60993336515875 # kg/m/s
+    U_inf : 14 # m/s
+    D : 178.3 # m 
+  seed : 42
+
+training:
+  learning_rate: 0.001
+  num_epochs : 1000
+  batch_size : 64 # -1 for full batch
+  test_size : 0.99 # 0.9 for 90% test, 10% train
+  include_physics : True
+  physics_points_size_ratio : 0.1
+  normaliser : [physics_normaliser, min_max_normaliser]
+  shuffle : True
+  network : residualNet
+  fig_prefix : "_"
+  adaptive_loss_weights : True
+  epochs_to_make_updates : 50
+  start_adapting_at_epoch : 500
+  finite_difference : False
+
+hydra:
+  mode : MULTIRUN
+  sweeper:
+    params:
+      training.learning_rate: range(1e-4, 1e-2, 1e-4)

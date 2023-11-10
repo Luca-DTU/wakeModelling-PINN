@@ -33,3 +33,4 @@
 # module load cuda/11.7
 ~/miniconda3/envs/hpc_env/bin/python main.py
 # python main.py -m +experiment=grid_search hydra/launcher=joblib
+# python main.py --multirun

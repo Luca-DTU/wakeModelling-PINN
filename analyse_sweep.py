@@ -51,6 +51,9 @@ if __name__ == "__main__":
     path = "multirun/2023-11-08/13-38-40"
     df_minmax = analyse_multirun(path)
     print(df_minmax)
+    print(df_minmax.iloc[:20].to_latex(index = False,float_format="%.4f"))
     path = "multirun/2023-11-09/11-38-28"
     df_z = analyse_multirun(path)
     print(df_z)
+    print(df_z.iloc[:20].to_latex(index = False))
+    print("end")

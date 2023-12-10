@@ -12,10 +12,10 @@
     training:
       learning_rate : 0.001
       num_epochs : 1000
-      batch_size : 64 # -1 for full batch
+      batch_size : 32 # -1 for full batch
       test_size : 0.99 # 0.9 for 90% test, 10% train
       include_physics : True
-      physics_points_size_ratio : 0.1
+      physics_points_size_ratio : 0.2
       normaliser : [physics_normaliser, min_max_normaliser]
       # normaliser : [physics_normaliser, Z_normaliser]
       # normaliser : [min_max_normaliser]
@@ -23,12 +23,12 @@
       # normaliser : [physics_normaliser]
       # normaliser : []
       shuffle : True
-      network : residualNet
+      network : deeperNet
       fig_prefix : "_"
       # network : CNN1D
       # fig_prefix : "CNN1D"
       adaptive_loss_weights : True
       epochs_to_make_updates : 50
       start_adapting_at_epoch : 500
-      finite_difference : False
+      dynamic_collocation : True
     

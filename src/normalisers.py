@@ -25,7 +25,10 @@ class Z_normaliser():
             std_y = self.std_y
             mean_y = self.mean_y
         X = X * std + mean
-        outputs = outputs * std_y + mean_y
+        if outputs is not None:
+            outputs = outputs * std_y + mean_y
+        else:
+            outputs = None
         if y is not None:
             y = y * std_y + mean_y
         else:
@@ -92,7 +95,10 @@ class min_max_normaliser():
             new_max = self.new_max
         
         X_ = ((X - new_min) / (new_max - new_min)) * (max_ - min_) + min_
-        outputs_ = ((outputs - new_min) / (new_max - new_min)) * (max_y - min_y) + min_y
+        if outputs is not None:
+            outputs_ = ((outputs - new_min) / (new_max - new_min)) * (max_y - min_y) + min_y
+        else:
+            outputs_ = None
         if y is not None:
             y_ = ((y - new_min) / (new_max - new_min)) * (max_y - min_y) + min_y
         else:
@@ -170,18 +176,25 @@ class physics_normaliser():
         # X
         X = X * self.constants["D"]
         # y
-        rho = self.constants["rho"]
-        U_inf = self.constants["U_inf"]
-        uv = y[:,0:2]
-        p = y[:,2].reshape(-1,1)
-        uv = uv * U_inf
-        p = p * rho * U_inf**2
-        y = np.concatenate((uv,p),axis=1)
+        if y is not None:
+            rho = self.constants["rho"]
+            U_inf = self.constants["U_inf"]
+            uv = y[:,0:2]
+            p = y[:,2].reshape(-1,1)
+            uv = uv * U_inf
+            p = p * rho * U_inf**2
+            y = np.concatenate((uv,p),axis=1)
+        else:
+            y = None
         # outputs
-        uv = outputs[:,0:2]
-        p = outputs[:,2].reshape(-1,1)
-        uv = uv * U_inf
-        p = p * rho * U_inf**2
-        outputs = np.concatenate((uv,p),axis=1)
+        if outputs is not None:
+            uv = outputs[:,0:2]
+            p = outputs[:,2].reshape(-1,1)
+            uv = uv * U_inf
+            p = p * rho * U_inf**2
+            outputs = np.concatenate((uv,p),axis=1)
+        else:
+            outputs = None
+        
         return X, outputs, y
     

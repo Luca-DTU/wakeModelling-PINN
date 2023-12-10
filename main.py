@@ -8,13 +8,15 @@ from softadapt import LossWeightedSoftAdapt
 import os
 import shutil
 import logging
+import copy
 log = logging.getLogger(__name__)
 
 def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub, 
          fig_prefix, network = models.simpleNet, include_physics = False, normaliser = None,shuffle=True,
          constants = {}, adaptive_loss_weights = False,
-         epochs_to_make_updates = 10, start_adapting_at_epoch = 0, finite_difference = False,
-         seed = 42, physics_points_size_ratio = 1.0):
+         epochs_to_make_updates = 10, start_adapting_at_epoch = 0, 
+         seed = 42, physics_points_size_ratio = 1.0, dynamic_collocation = False):
+    stored_nn = None
     torch.manual_seed(seed)
     network = getattr(models, network)
     X_phys,X_train, X_test, y_train, y_test = utils.load_data(path,
@@ -40,7 +42,7 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
     if batch_size == -1:
         batch_size = len(train_dataset)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
-    test_loader = DataLoader(dataset=test_dataset, num_workers=0, batch_size=1)
+    test_loader = DataLoader(dataset=test_dataset, num_workers=0, batch_size=1) # 1 flow case at a time
     # Define the model
     model = network().to(device)
     # Define the loss function and optimizer
@@ -64,7 +66,7 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
             outputs = model(batch_X)
             loss = criterion(outputs, batch_y) 
             epoch_losses["data"].append(loss.item())
-            if include_physics: # despite the names, these quantitites are the sum of squared residuals of the equations
+            if include_physics and epoch >= start_adapting_at_epoch: # despite the names, these quantitites are the sum of squared residuals of the equations
                 mass_conservation, r_momentum, z_momentum = utils.physics_informed_loss(batch_phys, model, constants, Normaliser, finite_difference)
                 log.debug(f"mass_conservation: {mass_conservation.item()}, r_momentum: {r_momentum.item()}, z_momentum: {z_momentum.item()}")
                 physics_loss = mass_conservation + r_momentum + z_momentum
@@ -75,14 +77,26 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
             weighted_loss = loss/adapt_weights[0] + physics_loss/adapt_weights[1]
             weighted_loss.backward()
             optimizer.step()
-        losses["data"].append(sum(epoch_losses["data"])/len(epoch_losses["data"]))
-        losses["physics"].append(sum(epoch_losses["physics"])/len(epoch_losses["physics"]))
+        losses["data"].append(sum(epoch_losses["data"]))
+        losses["physics"].append(sum(epoch_losses["physics"]))
         if epoch % epochs_to_make_updates == 0:
             log.info('Epoch: {}, Loss: {:.4f}, Physics loss: {:.8f}'.format(epoch+1, losses["data"][-1], losses["physics"][-1]))
             if adaptive_loss_weights and epoch >= start_adapting_at_epoch and include_physics:
                 sample_data,sample_phys = torch.Tensor(losses["data"]), torch.Tensor(losses["physics"])
                 adapt_weights = softadapt_object.get_component_weights(sample_data,sample_phys, verbose = False)
                 log.info(f"Adapt weights: {adapt_weights}")
+            if dynamic_collocation and epoch >= start_adapting_at_epoch and include_physics:
+                if stored_nn is not None:
+                    old_outputs = stored_nn(X_phys)
+                    new_outputs = model(X_phys)
+                    diff = torch.abs(torch.sum(old_outputs-new_outputs,axis=1))
+                    # concatenate X_phys and diff
+                    X_mat = torch.cat((X_phys,diff.unsqueeze(1)),axis=1).detach().numpy()
+                    n_samples = len(X_phys)
+                    D = constants["D"] if drop_hub else 0
+                    X_phys = utils.sample_points(X_mat, n_samples,Normaliser,D=D,grid_size=100)
+                stored_nn = copy.deepcopy(model)
+
 
     # Test the model
     model.eval()
@@ -98,7 +112,7 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
             X = X.cpu().detach().numpy()
             outputs = outputs.cpu().detach().numpy()
             y = y.cpu().detach().numpy()
-            for Normaliser_ in Normaliser:
+            for Normaliser_ in Normaliser[::-1]:
                 X[:,:3], outputs, y = Normaliser_.denormalise(X[:,:3], outputs, y)
             output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
             prefix = f"{fig_prefix}_{n}"

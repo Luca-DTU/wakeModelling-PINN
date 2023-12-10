@@ -6,6 +6,8 @@ import seaborn as sns
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import xarray as xr
+from scipy.interpolate import griddata
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     
 class dataset(Dataset):
@@ -47,6 +49,53 @@ class test_dataset(Dataset):
             instance = self.group_dict[list(self.groups.groups.keys())[idx]]
             return instance[:,:-3], instance[:,-3:]
     
+
+def sample_phys_points(X_phys,physics_points_size_ratio,p = None):
+    num_samples = int(len(X_phys) * physics_points_size_ratio)
+    idx = np.random.choice(len(X_phys), num_samples, replace=False, p=p)
+    X_phys = X_phys[idx]
+    return X_phys
+
+def sample_points(X_mat, n_samples, Normaliser, D=0,grid_size=100):
+    out_mat = X_mat.copy()
+    for Normaliser_ in Normaliser[::-1]:
+        out_mat[:,:2],_,_ = Normaliser_.denormalise(out_mat[:,:2],None,None)
+    # Extract x, y, and p values
+    x, y, p = out_mat[:,0], out_mat[:,1], out_mat[:,2]
+    # Create a grid
+    grid_x, grid_y = np.mgrid[min(x):max(x):complex(grid_size), min(y):max(y):complex(grid_size)]
+    # Interpolate p values on the grid
+    grid_p = griddata((x, y), p, (grid_x, grid_y), method='linear', fill_value=0)
+    # Flatten the grid for easy sampling
+    points = np.vstack([grid_x.ravel(), grid_y.ravel()]).T
+    probabilities = grid_p.ravel()
+    # get the index of the points on the hub
+    hub_idx = np.where(np.sqrt(points[:,0]**2 + points[:,1]**2) <= D)[0]
+    # set the probabilities of the points on the hub to zero
+    probabilities[hub_idx] = 0
+    # normalise the probabilities
+    probabilities = probabilities / np.sum(probabilities)
+    # Sample points based on probabilities
+    indices = np.random.choice(len(points), size=n_samples, p=probabilities)
+    sampled_points = points[indices]
+    # fig,axs = plt.subplots(3,1,figsize=(10,8))
+    # axs[0].scatter(X_mat[:,0],X_mat[:,1],c=X_mat[:,2])
+    # axs[0].set_xticks([])
+    # axs[0].set_yticks([])
+    # axs[1].scatter(points[:,0],points[:,1],c=probabilities)
+    # axs[1].set_xticks([])
+    # axs[1].set_yticks([])
+    # axs[2].scatter(sampled_points[:,0],sampled_points[:,1],s=1)
+    # axs[2].set_xticks([])
+    # axs[2].set_yticks([])
+    # plt.tight_layout()
+    # plt.show()
+    sampled_points = torch.from_numpy(sampled_points).float().to(device)
+    for Normaliser_ in Normaliser:
+        sampled_points[:,:2],_ = Normaliser_.normalise(sampled_points[:,:2],None)
+    return sampled_points
+
+
 def load_data(path,test_size=0.2, random_state=42, drop_hub= True, D = 0, shuffle=True, physics_points_size_ratio = 0.1):
     if path.endswith(".nc"):
         ds = xr.open_dataset(path)
@@ -74,12 +123,9 @@ def load_data(path,test_size=0.2, random_state=42, drop_hub= True, D = 0, shuffl
         X = df[['r', 'z_cyl']].values
         y = df[['Ur','Ux', 'P']].values #Ux is actually Uz
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state, shuffle = shuffle)
-    X_phys = X
-    num_samples = int(len(X_phys) * physics_points_size_ratio)
-    idx = np.random.choice(len(X_phys), num_samples, replace=False)
-    X_phys = X_phys[idx]
     X_test = X
     y_test = y
+    X_phys = sample_phys_points(X,physics_points_size_ratio)
     return X_phys,X_train, X_test, y_train, y_test
 
 def print_graph(g, indent=''):
@@ -264,7 +310,7 @@ def plot_heatmaps(X, outputs, y, fig_prefix="",output_dir = "Figures"):
 
     def plot_single_heatmap(r, z, values, ax, cmap, cbar_label):
         df = pd.DataFrame.from_dict({'r': r, 'z': z, 'values': values})
-        pivoted = df.pivot("r", "z", "values")
+        pivoted = df.pivot(index="r",columns= "z",values= "values")
         sns.heatmap(pivoted, ax=ax, cmap=cmap, cbar_kws={'label': cbar_label})
         ax.invert_yaxis()
         ax.set_xticks([])

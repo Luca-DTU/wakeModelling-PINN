@@ -1,5 +1,5 @@
     data:
-      path : Data\RANS_1wt_irot_v0.nc
+      path : Data\RANS_1wt_irot_v2.nc
       drop_hub : True
       constants:
         rho : 1.225 # kg/m^3

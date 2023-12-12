@@ -30,5 +30,5 @@
       adaptive_loss_weights : True
       epochs_to_make_updates : 50
       start_adapting_at_epoch : 500
-      dynamic_collocation : True
+      dynamic_collocation : False
     

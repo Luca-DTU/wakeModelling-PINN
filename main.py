@@ -67,7 +67,7 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
             loss = criterion(outputs, batch_y) 
             epoch_losses["data"].append(loss.item())
             if include_physics and epoch >= start_adapting_at_epoch: # despite the names, these quantitites are the sum of squared residuals of the equations
-                mass_conservation, r_momentum, z_momentum = utils.physics_informed_loss(batch_phys, model, constants, Normaliser, finite_difference)
+                mass_conservation, r_momentum, z_momentum = utils.physics_informed_loss(batch_phys, model, constants, Normaliser)
                 log.debug(f"mass_conservation: {mass_conservation.item()}, r_momentum: {r_momentum.item()}, z_momentum: {z_momentum.item()}")
                 physics_loss = mass_conservation + r_momentum + z_momentum
                 epoch_losses["physics"].append(physics_loss.item())
@@ -123,7 +123,7 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
     log.info(f"Model saved to {os.path.join(output_dir, f'{fig_prefix}_model.pth')}")
     return loss.item()
 
-@hydra.main(config_path="conf", config_name="config",version_base=None)
+@hydra.main(config_path="conf", config_name="optuna_sweeper",version_base=None)
 def my_app(config):
     data_config = config["data"]
     training_config = config["training"]

@@ -200,7 +200,7 @@ def physics_informed_loss(rz, net, constants, Normaliser, finite_difference = Fa
 
     # Calculate derivatives and second derivatives using functions
     if finite_difference:
-        # raise NotImplementedError("Finite difference not implemented yet")
+        raise NotImplementedError("Finite difference not implemented yet")
         du_r_dr, du_r_dz = calc_derivative_finite_diff(u_r, rz)
         du_z_dr, du_z_dz = calc_derivative_finite_diff(u_z, rz)
         dp_dr, dp_dz = calc_derivative_finite_diff(p, rz)

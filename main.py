@@ -30,11 +30,11 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
     Normaliser = [] # to be list of class instances
     for n in normaliser:
         # init normaliser
-        Normaliser_ = n(X_train[:,:3], y_train, constants)
+        Normaliser_ = n(X_train[:,:2], y_train, constants)
         # normalise data
-        X_train[:,:3], y_train = Normaliser_.normalise(X_train[:,:3], y_train)
-        X_test[:,:3], y_test = Normaliser_.normalise(X_test[:,:3], y_test)
-        X_phys[:,:3], _ = Normaliser_.normalise(X_phys[:,:3], None)
+        X_train[:,:2], y_train = Normaliser_.normalise(X_train[:,:2], y_train)
+        X_test[:,:2], y_test = Normaliser_.normalise(X_test[:,:2], y_test)
+        X_phys[:,:2], _ = Normaliser_.normalise(X_phys[:,:2], None)
         Normaliser.append(Normaliser_)
     train_dataset = utils.dataset(X_train, y_train)
     test_dataset = utils.test_dataset(X_test, y_test)
@@ -114,7 +114,7 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
             outputs = outputs.cpu().detach().numpy()
             y = y.cpu().detach().numpy()
             for Normaliser_ in Normaliser[::-1]:
-                X[:,:3], outputs, y = Normaliser_.denormalise(X[:,:3], outputs, y)
+                X[:,:2], outputs, y = Normaliser_.denormalise(X[:,:2], outputs, y)
             output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
             prefix = f"{fig_prefix}_{n}"
             utils.plot_heatmaps(X, outputs, y,prefix,output_dir) # this is too slow
@@ -124,22 +124,22 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
     log.info(f"Model saved to {os.path.join(output_dir, f'{fig_prefix}_model.pth')}")
     return loss.item()
 
-@hydra.main(config_path="conf", config_name="optuna_sweeper",version_base=None)
+@hydra.main(config_path="conf", config_name="big_data",version_base=None)
 def my_app(config):
     data_config = config["data"]
     training_config = config["training"]
     # Run the main function
     log.info(f"Running with config: {OmegaConf.to_yaml(config['training'])}")
-    try:
-        test_loss = main(**training_config, **data_config)
-    except Exception as e:
-        print("-----------------------------------")
-        print("JOB FAILED --- EXCEPTION")
-        log.error(f"Exception: {e}")
-        print("CONFIGURATION")
-        print(f"Running with config: {OmegaConf.to_yaml(config['training'])}")
-        print("-----------------------------------")
-        test_loss = 1e10
+    # try:
+    test_loss = main(**training_config, **data_config)
+    # except Exception as e:
+    #     print("-----------------------------------")
+    #     print("JOB FAILED --- EXCEPTION")
+    #     log.error(f"Exception: {e}")
+    #     print("CONFIGURATION")
+    #     print(f"Running with config: {OmegaConf.to_yaml(config['training'])}")
+    #     print("-----------------------------------")
+    #     test_loss = 1e10
     return test_loss
 
 def clean_up_empty_files():

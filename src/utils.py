@@ -112,9 +112,14 @@ def load_data(path,test_size=0.2, random_state=42, drop_hub= True, D = 0, shuffl
         df = df.merge(ds["muT"].to_dataframe(), left_index=True, right_index=True).reset_index()
         if drop_hub:
             df = df.drop(df[(np.sqrt(df['r']**2 + df['z_cyl']**2) <= D)].index)
-        X = df[['r', 'z_cyl','CT', 'TI_amb',"muT"]].values
-        y = df[['U_r','U_z', 'P']].values
-
+        df_test = df[df["CT"] == 0.73105]
+        df_train = df[df["CT"] != 0.73105]
+        X_train = df_train[['r', 'z_cyl','CT', 'TI_amb',"muT"]].values
+        y_train = df_train[['U_r','U_z', 'P']].values
+        X_test = df_test[['r', 'z_cyl','CT', 'TI_amb',"muT"]].values
+        y_test = df_test[['U_r','U_z', 'P']].values
+        single_case = df_test[df_test["TI_amb"] == 0.27]
+        X_phys = single_case[['r', 'z_cyl']].sample(frac=physics_points_size_ratio, random_state=random_state).values
     elif path.endswith(".csv"):
         df = pd.read_csv(path)
         # Drop the specified rows
@@ -122,10 +127,10 @@ def load_data(path,test_size=0.2, random_state=42, drop_hub= True, D = 0, shuffl
             df = df.drop(df[(np.sqrt(df['r']**2 + df['z_cyl']**2) <= D)].index)
         X = df[['r', 'z_cyl']].values
         y = df[['Ur','Ux', 'P']].values #Ux is actually Uz
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state, shuffle = shuffle)
-    X_test = X
-    y_test = y
-    X_phys = sample_phys_points(X,physics_points_size_ratio)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state, shuffle = shuffle)
+        X_test = X
+        y_test = y
+        X_phys = sample_phys_points(X,physics_points_size_ratio)
     return X_phys,X_train, X_test, y_train, y_test
 
 def print_graph(g, indent=''):

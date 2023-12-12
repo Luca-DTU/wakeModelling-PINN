@@ -5,7 +5,7 @@
         rho : 1.225 # kg/m^3
         mu : 1.78406e-05 # kg/m/s 
         mu_t : 
-        U_inf : 10 # m/s
+        U_inf : 1 # m/s
         D : 1 # m 
       seed : 42
 
@@ -16,7 +16,7 @@
       test_size : 0.99 # 0.9 for 90% test, 10% train
       include_physics : True
       physics_points_size_ratio : 0.1
-      normaliser : [physics_normaliser_empty, Z_normaliser]
+      normaliser : [physics_normaliser_empty, min_max_normaliser]
       shuffle : True
       network : residualNetBigData
       fig_prefix : "simpleNet"
@@ -25,4 +25,4 @@
       adaptive_loss_weights : True
       epochs_to_make_updates : 50
       start_adapting_at_epoch : 700
-      finite_difference : False
+      dynamic_collocation : False

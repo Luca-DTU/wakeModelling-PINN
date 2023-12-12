@@ -51,7 +51,7 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
     # set up losses
     losses = {"data": [], "physics": []}
     adapt_weights = torch.tensor([1,1])
-    softadapt_object  = LossWeightedSoftAdapt(beta=0.1, accuracy_order=epochs_to_make_updates)
+    softadapt_object  = LossWeightedSoftAdapt(beta=0.1, accuracy_order=10)
     # training loop
     phys_batch_size = X_phys.size()[0]//len(train_loader)
     log.info(f"number of batches: {len(train_loader)}")
@@ -81,11 +81,12 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
         losses["physics"].append(sum(epoch_losses["physics"]))
         if epoch % epochs_to_make_updates == 0:
             log.info('Epoch: {}, Loss: {:.4f}, Physics loss: {:.8f}'.format(epoch+1, losses["data"][-1], losses["physics"][-1]))
-            if adaptive_loss_weights and epoch >= start_adapting_at_epoch and include_physics:
+            if adaptive_loss_weights and epoch >= (start_adapting_at_epoch+epochs_to_make_updates) and include_physics:
                 sample_data,sample_phys = torch.Tensor(losses["data"]), torch.Tensor(losses["physics"])
-                adapt_weights = softadapt_object.get_component_weights(sample_data,sample_phys, verbose = False)
+                relevant_epochs = epoch-start_adapting_at_epoch # epochs with both physics and data loss
+                adapt_weights = softadapt_object.get_component_weights(sample_data[-relevant_epochs:],sample_phys[-relevant_epochs:], verbose = False)
                 log.info(f"Adapt weights: {adapt_weights}")
-            if dynamic_collocation and epoch >= start_adapting_at_epoch and include_physics:
+            if dynamic_collocation and epoch >= (start_adapting_at_epoch+epochs_to_make_updates) and include_physics:
                 if stored_nn is not None:
                     old_outputs = stored_nn(X_phys)
                     new_outputs = model(X_phys)
@@ -129,7 +130,16 @@ def my_app(config):
     training_config = config["training"]
     # Run the main function
     log.info(f"Running with config: {OmegaConf.to_yaml(config['training'])}")
-    test_loss = main(**training_config, **data_config)
+    try:
+        test_loss = main(**training_config, **data_config)
+    except Exception as e:
+        print("-----------------------------------")
+        print("JOB FAILED --- EXCEPTION")
+        log.error(f"Exception: {e}")
+        print("CONFIGURATION")
+        print(f"Running with config: {OmegaConf.to_yaml(config['training'])}")
+        print("-----------------------------------")
+        test_loss = 1e10
     return test_loss
 
 def clean_up_empty_files():

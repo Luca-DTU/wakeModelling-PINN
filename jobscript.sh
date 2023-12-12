@@ -5,17 +5,17 @@
 ### -- set the job Name -- 
 #BSUB -J pinn-wake-test
 ### -- ask for number of cores (default: 1) -- 
-#BSUB -n 1 
+#BSUB -n 4 
 ### ask for gpu
 ### BSUB -gpu "num=1:mode=exclusive_process"
 ### -- specify that the cores must be on the same host -- 
 #BSUB -R "span[hosts=1]"
 ### -- specify that we need 4GB of memory per core/slot -- 
-#BSUB -R "rusage[mem=32GB]"
+#BSUB -R "rusage[mem=8GB]"
 ### -- specify that we want the job to get killed if it exceeds 3 GB per core/slot -- 
-#BSUB -M 32GB
+#BSUB -M 8GB
 ### -- set walltime limit: hh:mm -- 
-#BSUB -W 120
+#BSUB -W 400
 ### -- set the email address -- 
 # please uncomment the following line and put in your e-mail address,
 # if you want to receive e-mail notifications on a non-default address
@@ -31,6 +31,7 @@
 
 # here follow the commands you want to execute with input.in as the input file
 # module load cuda/11.7
-~/miniconda3/envs/hpc_env/bin/python main.py
+# ~/miniconda3/envs/hpc_env/bin/python main.py
 # python main.py -m +experiment=grid_search hydra/launcher=joblib
 # python main.py --multirun
+~/miniconda3/envs/hpc_env/bin/python main.py hydra/launcher=joblib

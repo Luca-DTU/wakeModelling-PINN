@@ -1,14 +1,17 @@
+hydra-core==1.3.2
 matplotlib==3.5.2
 numpy==1.23.1
 omegaconf==2.3.0
-pandas==1.4.3
+pandas==2.1.4
 pytest==7.4.2
-scikit_learn==1.3.1
-seaborn==0.11.2
+scikit_learn==1.3.2
+scipy==1.9.0
+seaborn==0.13.0
 setuptools==58.1.0
 softadapt==0.0.5
 torch==2.1.0
 xarray==2023.8.0
-hydra-core==1.3.2
 hydra-joblib-launcher==1.2.0
 # git+https://github.com/dr-aheydari/SoftAdapt.git
+netCDF4 
+hydra-optuna-sweeper 

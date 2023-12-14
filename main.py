@@ -36,12 +36,12 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
         X_test[:,:2], y_test = Normaliser_.normalise(X_test[:,:2], y_test)
         X_phys[:,:2], _ = Normaliser_.normalise(X_phys[:,:2], None)
         Normaliser.append(Normaliser_)
-    train_dataset = utils.dataset(X_train, y_train)
+    train_dataset = utils.dataset(X_train, y_train,batch_size=batch_size)
     test_dataset = utils.test_dataset(X_test, y_test)
     X_phys = torch.from_numpy(X_phys).float().to(device)
     if batch_size == -1:
         batch_size = len(train_dataset)
-    train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+    train_loader = DataLoader(dataset=train_dataset, batch_size=1, shuffle=True, num_workers=0) 
     test_loader = DataLoader(dataset=test_dataset, num_workers=0, batch_size=1) # 1 flow case at a time
     # Define the model
     model = network().to(device)
@@ -59,6 +59,9 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
     for epoch in range(num_epochs):
         epoch_losses = {"data": [], "physics": []}
         for n_batch, (batch_X, batch_y) in enumerate(train_loader):
+            batch_X, batch_y = batch_X.squeeze(), batch_y.squeeze()
+            constants["mu_t"] = torch.unique(batch_X[:,4]).item()
+            print(constants["mu_t"])
             batch_X = batch_X.to(device)
             batch_y = batch_y.to(device)
             batch_phys = X_phys[n_batch*phys_batch_size:(n_batch+1)*phys_batch_size,:].to(device)

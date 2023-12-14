@@ -11,17 +11,40 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     
 class dataset(Dataset):
-    def __init__(self, X, y):
-        self.X = X
-        self.y = y
-        self.X = torch.from_numpy(self.X).float()
-        self.y = torch.from_numpy(self.y).float()
-        self.len = self.X.shape[0]
+    def __init__(self, X, y, batch_size):
+        self.batch_size = batch_size
+        match X.shape[1]:
+            case 2:
+                self.X = X
+                self.y = y
+                self.X = torch.from_numpy(self.X).float()
+                self.y = torch.from_numpy(self.y).float()
+                self.len = self.X.shape[0]
+            case 5:
+                self.X = X
+                self.y = y
+                self.X = torch.from_numpy(self.X).float()
+                self.y = torch.from_numpy(self.y).float()
+                unique_combinations = np.unique(self.X[:, 2:4], axis=0)
+                self.batch_indices = []
+                for combination in unique_combinations:
+                    indices = np.where((self.X[:, 2] == combination[0]) & (self.X[:, 3] == combination[1]))[0]
+                    num_batches = int(np.ceil(len(indices) / self.batch_size))
+                    batches = np.array_split(indices, num_batches)
+                    self.batch_indices.extend(batches)
+                self.len = len(self.batch_indices)
+            case _:
+                raise NotImplementedError("Only 2D and 5D data supported")
+
     def __len__(self):
         return self.len
-    
+
     def __getitem__(self, idx):
-        return self.X[idx], self.y[idx]
+        if self.X.shape[1] == 2:
+            return self.X[idx], self.y[idx]
+        elif self.X.shape[1] == 5:
+            batch_indices = self.batch_indices[idx]
+            return self.X[batch_indices], self.y[batch_indices]
     
 class test_dataset(Dataset):
     def __init__(self, X, y):
@@ -113,13 +136,19 @@ def load_data(path,test_size=0.2, random_state=42, drop_hub= True, D = 0, shuffl
         if drop_hub:
             df = df.drop(df[(np.sqrt(df['r']**2 + df['z_cyl']**2) <= D)].index)
         df_test = df[df["CT"] == 0.73105]
-        df_train = df[df["CT"] != 0.73105]
+        df_train = df[df["CT"].isin([0.63388,0.814])]
         X_train = df_train[['r', 'z_cyl','CT', 'TI_amb',"muT"]].values
         y_train = df_train[['U_r','U_z', 'P']].values
         X_test = df_test[['r', 'z_cyl','CT', 'TI_amb',"muT"]].values
         y_test = df_test[['U_r','U_z', 'P']].values
         single_case = df_test[df_test["TI_amb"] == 0.27]
         X_phys = single_case[['r', 'z_cyl']].sample(frac=physics_points_size_ratio, random_state=random_state).values
+        # sample a fraction of training points
+        num_samples = int(len(X_train) * (1-test_size))
+        idx = np.random.choice(len(X_train), num_samples, replace=False)
+        X_train = X_train[idx]
+        y_train = y_train[idx]
+
     elif path.endswith(".csv"):
         df = pd.read_csv(path)
         # Drop the specified rows

@@ -1,5 +1,5 @@
     data:
-      path : Data\RANS_1wt_irot_v2.nc
+      path : Data/RANS_1wt_irot_v2.nc
       drop_hub : True
       constants:
         rho : 1.225 # kg/m^3
@@ -12,10 +12,10 @@
     training:
       learning_rate : 0.001
       num_epochs : 10000
-      batch_size : 128 # -1 for full batch
-      test_size : 0.975 # 0.9 for 90% test, 10% train
+      batch_size : 256 # -1 for full batch
+      test_size : 0.98 # 0.9 for 90% test, 10% train
       include_physics : True
-      physics_points_size_ratio : 0.2
+      physics_points_size_ratio : 0.25
       normaliser : [physics_normaliser_empty, min_max_normaliser]
       shuffle : True
       network : residualNetBigData

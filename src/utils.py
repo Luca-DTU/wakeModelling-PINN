@@ -135,7 +135,7 @@ def load_data(path,test_size=0.2, random_state=42, drop_hub= True, D = 0, shuffl
         df = df.merge(ds["muT"].to_dataframe(), left_index=True, right_index=True).reset_index()
         if drop_hub:
             df = df.drop(df[(np.sqrt(df['r']**2 + df['z_cyl']**2) <= D)].index)
-        df_test = df[df["CT"] == 0.73105]
+        df_test = df[df["CT"] == 0.73105] # specific case here, will need to be changed in refactor
         df_train = df[df["CT"].isin([0.63388,0.814])]
         X_train = df_train[['r', 'z_cyl','CT', 'TI_amb',"muT"]].values
         y_train = df_train[['U_r','U_z', 'P']].values

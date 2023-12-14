@@ -46,14 +46,64 @@ def analyse_multirun(path):
     # sort by Test Loss
     df = df.sort_values(by="Test Loss")
     return df
+
+def analyse_multirun_2(path):
+    # Create an empty dataframe to store the test loss values and other parameters
+    df = pd.DataFrame(columns=["Test Loss","num_epochs","batch_size", "physics_points_size_ratio",
+                               "network","epochs_to_make_updates","start_adapting_at_epoch","dynamic_collocation"])
+
+    # Loop through each subfolder in the directory
+    for folder in os.listdir(path):
+        # Check if the current item is a directory
+        if os.path.isdir(os.path.join(path, folder)):
+            # Define the path to the main.log file in the current subfolder
+            log_path = os.path.join(path, folder, "main.log")
+            # Open the log file and read its contents
+            with open(log_path, "r") as f:
+                log_contents = f.read()
+            # Find the line containing the test loss value
+            loss_line = [line for line in log_contents.split("\n") if "Test loss:" in line][0]
+            # Extract the test loss value from the line
+            test_loss = float(loss_line.split(":")[-1])
+            
+            # Define the path to the overrides.yaml file in the current subfolder
+            overrides_path = os.path.join(path, folder, ".hydra", "overrides.yaml")
+            # Open the overrides file and read its contents
+            with open(overrides_path, "r") as f:
+                overrides_contents = f.read()
+            # Extract the relevant parameters from the overrides file
+            num_epochs = int(re.findall(r"training.num_epochs=(\d+)", overrides_contents)[0])
+            batch_size = int(re.findall(r"training.batch_size=(\d+)", overrides_contents)[0])
+            physics_points_size_ratio = float(re.findall(r"training.physics_points_size_ratio=(\d+\.\d+)", overrides_contents)[0])
+            network = re.findall(r"training.network=(\w+)", overrides_contents)[0]
+            epochs_to_make_updates = int(re.findall(r"training.epochs_to_make_updates=(\d+)", overrides_contents)[0])
+            start_adapting_at_epoch = int(re.findall(r"training.start_adapting_at_epoch=(\d+)", overrides_contents)[0])
+            dynamic_collocation = bool(re.findall(r"training.dynamic_collocation=(\w+)", overrides_contents)[0] == "True")
+            
+            # Add the test loss value and other parameters to the dataframe
+            df.loc[folder] = [test_loss,num_epochs,batch_size,physics_points_size_ratio,
+                               network,epochs_to_make_updates,start_adapting_at_epoch,dynamic_collocation]
+
+    # set index as int and sort it
+    df.index = df.index.astype(int)
+    df = df.sort_index()
+    # sort by Test Loss
+    df = df.sort_values(by="Test Loss")
+    return df
+
 if __name__ == "__main__":
     # Define the path to the directory containing the subfolders
-    path = "multirun/2023-11-08/13-38-40"
-    df_minmax = analyse_multirun(path)
-    print(df_minmax)
-    print(df_minmax.iloc[:20].to_latex(index = False,float_format="%.4f"))
-    path = "multirun/2023-11-09/11-38-28"
-    df_z = analyse_multirun(path)
-    print(df_z)
-    print(df_z.iloc[:20].to_latex(index = False))
+    # path = "multirun/2023-11-08/13-38-40"
+    # df_minmax = analyse_multirun(path)
+    # print(df_minmax)
+    # print(df_minmax.iloc[:20].to_latex(index = False,float_format="%.4f"))
+    # path = "multirun/2023-11-09/11-38-28"
+    # df_z = analyse_multirun(path)
+    # print(df_z)
+    # print(df_z.iloc[:20].to_latex(index = False))
+    # print("end")
+    path = "multirun/2023-12-12/16-51-18"
+    df = analyse_multirun_2(path)
+    print(df)
+    print(df.iloc[:20].to_latex(index = False,float_format="%.4f"))
     print("end")

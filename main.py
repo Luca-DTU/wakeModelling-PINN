@@ -61,10 +61,13 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
         for n_batch, (batch_X, batch_y) in enumerate(train_loader):
             batch_X, batch_y = batch_X.squeeze(), batch_y.squeeze()
             constants["mu_t"] = torch.unique(batch_X[:,4]).item()
-            print(constants["mu_t"])
             batch_X = batch_X.to(device)
             batch_y = batch_y.to(device)
             batch_phys = X_phys[n_batch*phys_batch_size:(n_batch+1)*phys_batch_size,:].to(device)
+            CT,TI = batch_X[:,2].unique().item(),batch_X[:,3].unique().item()
+            CT_column = torch.full((batch_phys.size(0), 1), CT)
+            TI_column = torch.full((batch_phys.size(0), 1), TI)
+            batch_phys = torch.cat((batch_phys, CT_column,TI_column), dim=1).detach() # detach to turn to leaf variable
             optimizer.zero_grad()
             outputs = model(batch_X)
             loss = criterion(outputs, batch_y) 
@@ -111,7 +114,6 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
             outputs = model(X)
             loss = criterion(outputs, y)
             log.info('Test loss: {:.4f}'.format(loss.item()))
-            
             # plot the results
             X = X.cpu().detach().numpy()
             outputs = outputs.cpu().detach().numpy()

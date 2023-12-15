@@ -85,8 +85,8 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
             optimizer.step()
         losses["data"].append(sum(epoch_losses["data"]))
         losses["physics"].append(sum(epoch_losses["physics"]))
+        log.info('Epoch: {}, Loss: {:.4f}, Physics loss: {:.8f}'.format(epoch+1, losses["data"][-1], losses["physics"][-1]))
         if epoch % epochs_to_make_updates == 0:
-            log.info('Epoch: {}, Loss: {:.4f}, Physics loss: {:.8f}'.format(epoch+1, losses["data"][-1], losses["physics"][-1]))
             if adaptive_loss_weights and epoch >= (start_adapting_at_epoch+epochs_to_make_updates) and include_physics:
                 sample_data,sample_phys = torch.Tensor(losses["data"]), torch.Tensor(losses["physics"])
                 relevant_epochs = epoch-start_adapting_at_epoch # epochs with both physics and data loss
@@ -94,11 +94,22 @@ def main(path, learning_rate, num_epochs, batch_size, test_size, drop_hub,
                 log.info(f"Adapt weights: {adapt_weights}")
             if dynamic_collocation and epoch >= (start_adapting_at_epoch+epochs_to_make_updates) and include_physics:
                 if stored_nn is not None:
+                    # for X_phys here we need to attach a CT and TI column to X_phys.
+                    # since the idea is that this process serves to see the changes in the prediction of the NN based 
+                    # on the physics points, it doesnt matter what CT and TI we attach to X_phys, 
+                    # as long as they are the consistent throughout the training
+                    # but the right way to do it is to sample CT and TI from a uniform distribution 
+                    # This way the input will be statistically consistent even though not exactly the same
+                    CT_column,TI_column = torch.rand(X_phys.size(0)),torch.rand(X_phys.size(0))*0.3
+                    # reshape into column vectors
+                    CT_column = CT_column.unsqueeze(1)
+                    TI_column = TI_column.unsqueeze(1)
+                    X_phys = torch.cat((X_phys, CT_column,TI_column), dim=1).detach() # detach to turn to leaf variable
                     old_outputs = stored_nn(X_phys)
                     new_outputs = model(X_phys)
                     diff = torch.abs(torch.sum(old_outputs-new_outputs,axis=1))
                     # concatenate X_phys and diff
-                    X_mat = torch.cat((X_phys,diff.unsqueeze(1)),axis=1).detach().numpy()
+                    X_mat = torch.cat((X_phys[:,:2],diff.unsqueeze(1)),axis=1).detach().numpy()
                     n_samples = len(X_phys)
                     D = constants["D"] if drop_hub else 0
                     X_phys = utils.sample_points(X_mat, n_samples,Normaliser,D=D,grid_size=100)
